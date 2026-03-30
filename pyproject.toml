@@ -1,0 +1,19 @@
+[project]
+name = "tiquette"
+version = "0.1.0"
+description = "Minimal file-based ticket system with dependency tracking"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+tq = "tiquette.cli:main"
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
