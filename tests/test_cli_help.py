@@ -24,7 +24,7 @@ class TestHelpSections:
         result = run_tq("--help")
         assert result.returncode == 0
         output = result.stdout
-        for section in ["Lifecycle", "Relationships", "Fields", "Content", "Query"]:
+        for section in ["View", "Lifecycle", "Relationships", "Fields", "Content"]:
             assert section in output, f"Missing section '{section}' in help output"
 
     def test_top_level_help_shows_description(self) -> None:
@@ -37,10 +37,10 @@ class TestHelpSections:
         commands = [
             "create", "start", "close", "cancel", "reopen",
             "dep", "undep", "nest", "unnest", "link", "unlink",
-            "assign", "unassign", "change-prio", "change-type",
-            "tag", "untag", "set-ref", "unset-ref",
+            "assign", "change-prio", "change-type",
+            "tag", "untag", "xref",
             "describe", "add-note",
-            "show", "info", "path", "show-deps", "ls", "tags", "archive",
+            "show", "info", "path", "deps", "ls", "tags", "links", "archive",
         ]
         for cmd in commands:
             assert cmd in output, f"Command '{cmd}' missing from help output"
@@ -53,7 +53,7 @@ class TestCommandHelp:
         result = run_tq("create", "--help")
         assert result.returncode == 0
         for flag in ["-d", "--description", "-t", "--type", "-p", "--priority",
-                     "-a", "--assignee", "--ref", "--parent", "--tags", "--deps"]:
+                     "-a", "--assignee", "--xref", "--parent", "--tag", "--dep"]:
             assert flag in result.stdout, f"Flag '{flag}' missing from create help"
 
     def test_ls_help(self) -> None:
@@ -75,7 +75,7 @@ class TestCommandHelp:
         assert "--json" in result.stdout
 
     def test_show_deps_help(self) -> None:
-        result = run_tq("show-deps", "--help")
+        result = run_tq("deps", "--help")
         assert result.returncode == 0
         assert "--full" in result.stdout
 

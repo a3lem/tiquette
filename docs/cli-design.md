@@ -1,75 +1,48 @@
 # CLI Design
 
-Options come after positional arguments.
+## Command Reference
 
 ```
-tq - minimal ticket system with dependency tracking
+tq - a minimal ticket system with dependency tracking
 
 Usage: tq <command> [args]
 
 Lifecycle:
-  create [title] [options]   Create ticket, prints ID
-    -d, --description        Body content (markdown below frontmatter)
-    -t, --type               Type (bug|feature|task|epic|chore) [default: task]
-    -p, --priority           Priority 0-4, 0=highest [default: 2]
-    -a, --assignee           Assignee [default: null]
-    --ref                    External reference (e.g., gh-123, JIRA-456)
-    --parent                 Parent ticket ID
-    --tags                   Comma-separated tags (e.g., --tags ui,backend,urgent)
-    --deps                   Comma-separated blocker IDs
-  start <id>                 Set status to in_progress
-  close <id>                 Set status to closed (resolution: completed)
-  cancel <id>                Set status to closed (resolution: canceled)
-  reopen <id>                Set status to open (clears resolution)
+  create [title]                        Create ticket, prints ID
+  start <id>                            Set status to in_progress
+  close <id>                            Close as completed
+  cancel <id>                           Close as canceled
+  reopen <id>                           Reopen (clears resolution)
+  archive                               Move closed tickets to archive
 
 Relationships:
-  dep <id> <dep-id> [dep-id...]
-                             Add dependency (id depends on dep-id(s): it is blocked by dep-id(s)).
-                             Rejects with non-zero exit if cycle detected
-  undep <id> <dep-id> [dep-id...]
-                             Remove blocking dependency
-  nest <child-id> [child-id...] <parent-id>
-                             Set parent (last arg is destination, like mv)
-  unnest <id> [id...]        Remove from parent
-  link <id> <id> [id...]     Associate tickets (symmetric, informational)
-  unlink <id> <id> [id...]   Remove association(s)
+  dep <id> <dep-id>...                  Add blocking dependency
+  undep <id> <dep-id>...                Remove dependency
+  nest <child>... <parent>              Set parent
+  unnest <id>...                        Remove from parent
+  link <id> <id>...                     Associate tickets (symmetric)
+  unlink <id> <id>...                   Remove association(s)
+  deps <id>                             Show dependency tree
+  links                                 List all linked pairs
 
 Fields:
-  assign <id> <assignee>     Set assignee
-  unassign <id>              Clear assignee
-  change-prio <id> <priority>   Update priority: 0-4, 0=highest
-  change-type <id> <type>       Change ticket type
-  tag <id> <tag,...>          Append tag(s)
-  untag <id> <tag,...>        Remove tag(s)
-  set-ref <id> <ref>          Set external reference (e.g., gh-123, JIRA-456)
-  unset-ref <id>             Clear external reference
+  assign <id> [assignee]                Set or clear assignee
+  change-prio <id> <priority>           Update priority (0-4)
+  change-type <id> <type>               Change ticket type
+  tag <id> <tag> [tag...]                Append tag(s)
+  untag <id> <tag> [tag...]              Remove tag(s)
+  xref <id> [xref]                      Set or clear external reference
+  tags                                  List all tags with counts
 
 Content:
-  describe <id> [text]       Set/replace description section
-  add-note <id> [text]       Append timestamped note (or pipe via stdin)
+  describe <id> <text>                  Set/replace description
+  add-note <id> <text>                  Append timestamped note
 
-Query:
-  show <id> [--json]           Display ticket (frontmatter + body)
-  info <id> [--json]           Frontmatter + computed relationships (no body)
-  path <id>                    Print file path for direct editing
-  show-deps <id> [--full]      Show dependency tree (--full disables dedup)
-  ls [options]                 List tickets [default: open + in_progress]
-    --status X                 Filter by status (open|in_progress|closed)
-    --ready                    Actionable: no unresolved deps or open children
-    --blocked                  Has unresolved deps or open children
-    --completed                Resolution = completed (implies --status closed)
-    --canceled                 Resolution = canceled (implies --status closed)
-    --assignee X               Filter by assignee
-    --tag X                    Filter by tag
-    --type X                   Filter by type
-    --sort X                   Sort by field (priority|mtime) [default: priority]
-    --limit N                  Limit results
-    --jsonl                    Output as JSON Lines (one object per ticket)
-  tags                         List all tags with counts, sorted by frequency
-  archive                      Move closed/canceled tickets to archive directory
-
-Plumbing:
-  super <cmd> [args]         Bypass plugins, run built-in command directly
+View:
+  ls [options]                          List tickets
+  show <id>                             Display ticket
+  info <id>                             Frontmatter + relationships
+  path <id>                             Print file path
 ```
 
 ## Ticket File Format
@@ -87,7 +60,7 @@ deps: []
 links: []
 parent:
 tags: []
-ref:
+xref:
 resolution:
 created: 2026-03-30T12:00:00Z
 ---

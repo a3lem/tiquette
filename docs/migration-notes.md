@@ -1,5 +1,18 @@
 # Migration Notes from `tk` to `tq`
 
+> **STALE** (2026-03-31): This document reflects the initial redesign proposal.
+> The CLI has since been refined during implementation. For the current interface,
+> see `docs/cli-design.md` or run `tq --help`. Key drift from this document:
+>
+> - `set-ref`/`unset-ref` → `xref <id> [xref]` (one command, omit to clear)
+> - `assign`/`unassign` → `assign <id> [assignee]` (one command, omit to clear)
+> - `--ref` → `--xref` on create
+> - `dep tree` → `deps`
+> - `show-deps` → `deps`
+> - New command: `links` (list all linked pairs)
+> - Section rename: Query → View
+> - Section moves: `archive` → Lifecycle, `deps`/`links` → Relationships, `tags` → Fields
+
 This documents all behavioral changes from the original bash `ticket` (`tk`) CLI.
 
 ## Removed

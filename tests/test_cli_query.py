@@ -64,20 +64,20 @@ class TestPathArgs:
 
 
 class TestShowDepsArgs:
-    """Argument parsing for `tq show-deps`."""
+    """Argument parsing for `tq deps`."""
 
     # spec: ticket-query requirement=show-dependency-tree scenario=dependency-tree-shows-transitive-deps
-    def test_show_deps_requires_id(self) -> None:
-        result = run_tq("show-deps")
+    def test_deps_requires_id(self) -> None:
+        result = run_tq("deps")
         assert result.returncode != 0
 
-    def test_show_deps_accepts_id(self) -> None:
-        result = run_tq("show-deps", "task-0001")
+    def test_deps_accepts_id(self) -> None:
+        result = run_tq("deps", "task-0001")
         assert result.returncode == 0
 
     # spec: ticket-query requirement=show-dependency-tree scenario=full-tree-disables-deduplication
-    def test_show_deps_accepts_full_flag(self) -> None:
-        result = run_tq("show-deps", "task-0001", "--full")
+    def test_deps_accepts_full_flag(self) -> None:
+        result = run_tq("deps", "task-0001", "--full")
         assert result.returncode == 0
 
 
@@ -173,6 +173,15 @@ class TestTagsArgs:
     # spec: ticket-query requirement=tags-listing scenario=tags-sorted-by-count-descending
     def test_tags_no_args(self) -> None:
         result = run_tq("tags")
+        assert result.returncode == 0
+
+
+class TestLinksArgs:
+    """Argument parsing for `tq links`."""
+
+    # spec: ticket-query requirement=links-listing
+    def test_links_no_args(self) -> None:
+        result = run_tq("links")
         assert result.returncode == 0
 
 

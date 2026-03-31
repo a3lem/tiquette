@@ -15,25 +15,21 @@ def run_tq(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 class TestAssignArgs:
-    """Argument parsing for `tq assign` / `tq unassign`."""
+    """Argument parsing for `tq assign`."""
 
     # spec: ticket-fields requirement=assign scenario=assign-a-user
-    def test_assign_requires_id_and_assignee(self) -> None:
-        result = run_tq("assign", "t-001")
-        assert result.returncode != 0
-
     def test_assign_accepts_id_and_assignee(self) -> None:
         result = run_tq("assign", "t-001", "Alice")
         assert result.returncode == 0
 
-    # spec: ticket-fields requirement=unassign scenario=unassign-a-user
-    def test_unassign_requires_id(self) -> None:
-        result = run_tq("unassign")
-        assert result.returncode != 0
-
-    def test_unassign_accepts_id(self) -> None:
-        result = run_tq("unassign", "t-001")
+    # spec: ticket-fields requirement=assign scenario=assign-clears-when-omitted
+    def test_assign_without_assignee_clears(self) -> None:
+        result = run_tq("assign", "t-001")
         assert result.returncode == 0
+
+    def test_assign_requires_id(self) -> None:
+        result = run_tq("assign")
+        assert result.returncode != 0
 
 
 class TestChangePrioArgs:
@@ -87,13 +83,14 @@ class TestTagArgs:
         result = run_tq("tag", "t-001")
         assert result.returncode != 0
 
-    def test_tag_accepts_comma_separated_tags(self) -> None:
-        result = run_tq("tag", "t-001", "ui,backend")
-        assert result.returncode == 0
-
     # spec: ticket-fields requirement=tag-management scenario=add-tags
     def test_tag_accepts_single_tag(self) -> None:
         result = run_tq("tag", "t-001", "urgent")
+        assert result.returncode == 0
+
+    # spec: ticket-fields requirement=tag-management scenario=add-tags
+    def test_tag_accepts_multiple_tags(self) -> None:
+        result = run_tq("tag", "t-001", "ui", "backend")
         assert result.returncode == 0
 
     # spec: ticket-fields requirement=tag-management scenario=remove-tags
@@ -101,28 +98,24 @@ class TestTagArgs:
         result = run_tq("untag", "t-001")
         assert result.returncode != 0
 
-    def test_untag_accepts_comma_separated_tags(self) -> None:
-        result = run_tq("untag", "t-001", "ui,backend")
+    def test_untag_accepts_multiple_tags(self) -> None:
+        result = run_tq("untag", "t-001", "ui", "backend")
         assert result.returncode == 0
 
 
-class TestRefArgs:
-    """Argument parsing for `tq set-ref` / `tq unset-ref`."""
+class TestXrefArgs:
+    """Argument parsing for `tq xref`."""
 
     # spec: ticket-fields requirement=external-reference scenario=set-reference
-    def test_set_ref_requires_id_and_ref(self) -> None:
-        result = run_tq("set-ref", "t-001")
-        assert result.returncode != 0
-
-    def test_set_ref_accepts_id_and_ref(self) -> None:
-        result = run_tq("set-ref", "t-001", "gh-123")
+    def test_xref_accepts_id_and_ref(self) -> None:
+        result = run_tq("xref", "t-001", "gh-123")
         assert result.returncode == 0
 
     # spec: ticket-fields requirement=external-reference scenario=clear-reference
-    def test_unset_ref_requires_id(self) -> None:
-        result = run_tq("unset-ref")
-        assert result.returncode != 0
-
-    def test_unset_ref_accepts_id(self) -> None:
-        result = run_tq("unset-ref", "t-001")
+    def test_xref_without_ref_clears(self) -> None:
+        result = run_tq("xref", "t-001")
         assert result.returncode == 0
+
+    def test_xref_requires_id(self) -> None:
+        result = run_tq("xref")
+        assert result.returncode != 0

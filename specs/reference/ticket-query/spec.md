@@ -115,8 +115,8 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - When the user runs `tq ls`
 - Then the output is empty
 
-### Scenario: Ready filter
-- Given "ready-001" has no deps and "ready-002" depends on open "ready-003"
+### Scenario: Ready filter (no deps)
+- Given "ready-001" has no deps and no open children, and "ready-002" depends on open "ready-003"
 - When the user runs `tq ls --ready`
 - Then the output contains "ready-001"
 - And the output does not contain "ready-002"
@@ -131,19 +131,29 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - When the user runs `tq ls --ready`
 - Then the output does not contain "ready-001"
 
+### Scenario: Ready excludes parent with open children
+- Given "ready-001" has open child "ready-002"
+- When the user runs `tq ls --ready`
+- Then the output does not contain "ready-001"
+
 ### Scenario: Ready sorts by priority then ID
 - Given tickets with varying priorities exist
 - When the user runs `tq ls --ready`
 - Then tickets are sorted by priority ascending, then by ID
 
-### Scenario: Blocked filter
+### Scenario: Blocked by open dependency
 - Given "block-001" depends on open "block-002"
 - When the user runs `tq ls --blocked`
 - Then the output contains "block-001"
 - And the output shows only unclosed blockers
 
-### Scenario: Blocked excludes tickets with all deps closed
-- Given "block-001" depends on "block-002" (status closed)
+### Scenario: Blocked by open children
+- Given "block-001" has open child "block-003"
+- When the user runs `tq ls --blocked`
+- Then the output contains "block-001"
+
+### Scenario: Blocked excludes tickets with all deps closed and no open children
+- Given "block-001" depends on "block-002" (status closed) and has no open children
 - When the user runs `tq ls --blocked`
 - Then the output does not contain "block-001"
 
@@ -245,27 +255,27 @@ The system SHALL render parent-child relationships as indented trees in `ls` out
 
 ## Requirement: Show dependency tree
 
-The system SHALL display a transitive dependency tree when `tq show-deps <id>` is invoked.
+The system SHALL display a transitive dependency tree when `tq deps <id>` is invoked.
 
 ### Scenario: Dependency tree shows transitive deps
 - Given "task-0001" depends on "task-0002", which depends on "task-0003"
-- When the user runs `tq show-deps task-0001`
+- When the user runs `tq deps task-0001`
 - Then the output contains all three IDs with status and title
 - And the output uses box-drawing characters
 
 ### Scenario: Dependency tree with multiple children
 - Given "task-0001" depends on both "task-0002" and "task-0003"
-- When the user runs `tq show-deps task-0001`
+- When the user runs `tq deps task-0001`
 - Then the output contains both dependencies
 
 ### Scenario: Full tree disables deduplication
 - Given a diamond dependency pattern
-- When the user runs `tq show-deps --full task-0001`
+- When the user runs `tq deps --full task-0001`
 - Then shared dependencies appear multiple times
 
 ### Scenario: Children sorted by subtree depth then ID
 - Given dependencies with varying subtree depths
-- When the user runs `tq show-deps task-0001`
+- When the user runs `tq deps task-0001`
 - Then children are sorted by subtree depth ascending, then by ID
 
 ## Requirement: Tags listing
@@ -281,6 +291,15 @@ The system SHALL list all tags with counts when `tq tags` is invoked. Only open/
 - Given a tag appears on both open and closed tickets
 - When the user runs `tq tags`
 - Then the count reflects only open/in_progress tickets
+
+## Requirement: Links listing
+
+The system SHALL list all linked pairs across tickets when `tq links` is invoked.
+
+### Scenario: Links lists all pairs
+- Given tickets with various links exist
+- When the user runs `tq links`
+- Then the output shows all linked pairs
 
 ## Requirement: Archive
 

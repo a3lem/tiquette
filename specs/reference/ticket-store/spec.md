@@ -48,7 +48,7 @@ Tickets SHALL be stored as markdown files with YAML frontmatter in `.tickets/`. 
 - Given a ticket is created
 - Then the file contains YAML frontmatter between `---` delimiters
 - And the title is a `# heading` below the frontmatter
-- And the frontmatter includes: id, status, type, priority, assignee, deps, links, parent, tags, ref, resolution, created
+- And the frontmatter includes: id, status, type, priority, assignee, deps, links, parent, tags, xref, resolution, created
 
 ## Requirement: ID generation
 

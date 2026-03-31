@@ -1,10 +1,10 @@
 # Ticket Fields
 
-Covers commands that modify individual ticket fields: `assign`, `unassign`, `change-prio`, `change-type`, `tag`, `untag`, `set-ref`, `unset-ref`.
+Covers commands that modify individual ticket fields: `assign`, `change-prio`, `change-type`, `tag`, `untag`, `xref`.
 
 ## Requirement: Assign
 
-The system SHALL set a ticket's assignee when `tq assign <id> <assignee>` is invoked.
+The system SHALL set a ticket's assignee when `tq assign <id> <assignee>` is invoked. When `assignee` is omitted, the system SHALL clear the assignee.
 
 ### Scenario: Assign a user
 - Given ticket "t-001" exists with no assignee
@@ -16,13 +16,9 @@ The system SHALL set a ticket's assignee when `tq assign <id> <assignee>` is inv
 - When the user runs `tq assign t-001 "Bob"`
 - Then ticket "t-001" has field `assignee` with value `Bob`
 
-## Requirement: Unassign
-
-The system SHALL clear a ticket's assignee when `tq unassign <id>` is invoked.
-
-### Scenario: Unassign a user
+### Scenario: Clear assignee
 - Given ticket "t-001" has assignee "Alice"
-- When the user runs `tq unassign t-001`
+- When the user runs `tq assign t-001`
 - Then ticket "t-001" has no assignee value
 
 ## Requirement: Change priority
@@ -53,11 +49,11 @@ The system SHALL update a ticket's type when `tq change-type <id> <type>` is inv
 
 ## Requirement: Tag management
 
-The system SHALL append tags when `tq tag <id> <tag,...>` is invoked and remove tags when `tq untag <id> <tag,...>` is invoked. Tags are comma-separated.
+The system SHALL append tags when `tq tag <id> <tag> [tag...]` is invoked and remove tags when `tq untag <id> <tag> [tag...]` is invoked. Multiple tags are passed as separate positional arguments.
 
 ### Scenario: Add tags
 - Given ticket "t-001" has no tags
-- When the user runs `tq tag t-001 ui,backend`
+- When the user runs `tq tag t-001 ui backend`
 - Then ticket "t-001" has tags `[ui, backend]`
 
 ### Scenario: Add tags is additive
@@ -77,14 +73,14 @@ The system SHALL append tags when `tq tag <id> <tag,...>` is invoked and remove 
 
 ## Requirement: External reference
 
-The system SHALL set or clear an external reference when `tq set-ref` / `tq unset-ref` is invoked.
+The system SHALL set an external reference when `tq xref <id> <xref>` is invoked. When `xref` is omitted, the system SHALL clear the external reference.
 
 ### Scenario: Set reference
-- Given ticket "t-001" has no ref
-- When the user runs `tq set-ref t-001 "gh-123"`
-- Then ticket "t-001" has field `ref` with value `gh-123`
+- Given ticket "t-001" has no xref
+- When the user runs `tq xref t-001 "gh-123"`
+- Then ticket "t-001" has field `xref` with value `gh-123`
 
 ### Scenario: Clear reference
-- Given ticket "t-001" has ref "gh-123"
-- When the user runs `tq unset-ref t-001`
-- Then ticket "t-001" has no ref value
+- Given ticket "t-001" has xref "gh-123"
+- When the user runs `tq xref t-001`
+- Then ticket "t-001" has no xref value

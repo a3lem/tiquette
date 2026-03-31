@@ -64,7 +64,7 @@ class TestCreateArgs:
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-external-reference
     def test_create_with_ref(self) -> None:
-        result = run_tq("create", "Test", "--ref", "JIRA-123")
+        result = run_tq("create", "Test", "--xref", "JIRA-123")
         assert result.returncode == 0
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-parent
@@ -74,12 +74,12 @@ class TestCreateArgs:
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-tags
     def test_create_with_tags(self) -> None:
-        result = run_tq("create", "Test", "--tags", "ui,backend")
+        result = run_tq("create", "Test", "--tag", "ui", "--tag", "backend")
         assert result.returncode == 0
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-deps
     def test_create_with_deps(self) -> None:
-        result = run_tq("create", "Test", "--deps", "dep-001,dep-002")
+        result = run_tq("create", "Test", "--dep", "dep-001", "--dep", "dep-002")
         assert result.returncode == 0
 
     # spec: ticket-lifecycle requirement=create-ticket
@@ -87,8 +87,8 @@ class TestCreateArgs:
         result = run_tq(
             "create", "Full ticket",
             "-d", "desc", "-t", "bug", "-p", "1", "-a", "Alice",
-            "--ref", "GH-42", "--parent", "p-001",
-            "--tags", "ui,api", "--deps", "d-001",
+            "--xref", "GH-42", "--parent", "p-001",
+            "--tag", "ui", "--tag", "api", "--dep", "d-001",
         )
         assert result.returncode == 0
 

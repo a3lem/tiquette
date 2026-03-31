@@ -42,8 +42,8 @@ The system SHALL create a ticket file in `.tickets/` when `tq create` is invoked
 
 ### Scenario: Create with external reference
 - Given a clean tickets directory
-- When the user runs `tq create "External ticket" --ref "JIRA-123"`
-- Then the created ticket has field `ref` with value `JIRA-123`
+- When the user runs `tq create "External ticket" --xref "JIRA-123"`
+- Then the created ticket has field `xref` with value `JIRA-123`
 
 ### Scenario: Create with parent
 - Given a ticket exists with ID "parent-001"
@@ -52,12 +52,12 @@ The system SHALL create a ticket file in `.tickets/` when `tq create` is invoked
 
 ### Scenario: Create with tags
 - Given a clean tickets directory
-- When the user runs `tq create "Tagged ticket" --tags ui,backend`
+- When the user runs `tq create "Tagged ticket" --tag ui --tag backend`
 - Then the created ticket has tags `[ui, backend]`
 
 ### Scenario: Create with deps
 - Given tickets "dep-001" and "dep-002" exist
-- When the user runs `tq create "Blocked ticket" --deps dep-001,dep-002`
+- When the user runs `tq create "Blocked ticket" --dep dep-001 --dep dep-002`
 - Then the created ticket has deps `[dep-001, dep-002]`
 
 ### Scenario: Create rejects invalid type
