@@ -38,8 +38,8 @@ Fields:
   assign <id> [assignee]                Set or clear assignee
   change-prio <id> <priority>           Update priority (0-4)
   change-type <id> <type>               Change ticket type
-  tag <id> <tag> [tag...]                Append tag(s)
-  untag <id> <tag> [tag...]              Remove tag(s)
+  tag <id> <tag> [tag...]               Append tag(s)
+  untag <id> <tag> [tag...]             Remove tag(s)
   xref <id> [xref]                      Set or clear external reference
   tags                                  List all tags with counts
 
@@ -102,8 +102,8 @@ Fields:
   assign <id> [assignee]                Set or clear assignee
   change-prio <id> <priority>           Update priority: 0-4, 0=highest
   change-type <id> <type>               Change ticket type
-  tag <id> <tag> [tag...]                Append tag(s)
-  untag <id> <tag> [tag...]              Remove tag(s)
+  tag <id> <tag> [tag...]               Append tag(s)
+  untag <id> <tag> [tag...]             Remove tag(s)
   xref <id> [xref]                      Set or clear external reference
   tags                                  List all tags with counts, sorted by frequency
 
