@@ -1,8 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
 import sys
 import typing as T
+from collections import Counter
+from pathlib import Path
+
+from tiquette.store import (
+    Ticket,
+    TicketNotFoundError,
+    find_tickets_dir,
+    list_ticket_ids,
+    read_ticket,
+    resolve_id,
+)
 
 
 # [AI] Query commands: show, info, path, deps, ls, tags, archive.
@@ -84,33 +97,527 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_archive.set_defaults(func=_handle_archive)
 
 
+# ── Helpers ──────────────────────────────────────────────────
+
+
+def _load_all_tickets(tickets_dir: Path) -> dict[str, Ticket]:
+    """Load all tickets into a dict keyed by ID."""
+    result: dict[str, Ticket] = {}
+    for tid in list_ticket_ids(tickets_dir):
+        result[tid] = read_ticket(tid, tickets_dir)
+    return result
+
+
+def _format_ticket_line(t: Ticket) -> str:
+    """Format a single ticket as: <id> [P<n>][status] - Title"""
+    return f"{t.id} [P{t.priority}][{t.status}] - {t.title}"
+
+
+def _format_ticket_line_with_deps(t: Ticket) -> str:
+    """Format ticket line, appending deps if present."""
+    line = _format_ticket_line(t)
+    if t.deps:
+        dep_str = ", ".join(t.deps)
+        line += f" <- [{dep_str}]"
+    return line
+
+
+# [AI] Determine if a ticket is "blocked": has open deps or open children.
+def _is_blocked(
+    ticket: Ticket,
+    all_tickets: dict[str, Ticket],
+) -> bool:
+    # Check open dependencies
+    for dep_id in ticket.deps:
+        dep = all_tickets.get(dep_id)
+        if dep and dep.status != "closed":
+            return True
+    # Check open children
+    for t in all_tickets.values():
+        if t.parent == ticket.id and t.status != "closed":
+            return True
+    return False
+
+
+# [AI] Build parent->children map for tree rendering.
+def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str]]:
+    children: dict[str | None, list[str]] = {}
+    for tid, t in tickets.items():
+        children.setdefault(t.parent, []).append(tid)
+    return children
+
+
+# ── show ─────────────────────────────────────────────────────
+
+
+# [AI] Show full ticket content: frontmatter, body, and relationship sections
+# (blockers, blocking, children, linked). JSON mode outputs structured data.
 def _handle_show(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    try:
+        ticket_id = resolve_id(args.id, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    ticket = read_ticket(ticket_id, tickets_dir)
+
+    if args.json:
+        # Read raw file body for the "body" field
+        file_path = tickets_dir / f"{ticket_id}.md"
+        raw = file_path.read_text()
+        parts = raw.split("---\n")
+        body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
+        data = {
+            "id": ticket.id,
+            "title": ticket.title,
+            "status": ticket.status,
+            "type": ticket.type,
+            "priority": ticket.priority,
+            "assignee": ticket.assignee,
+            "deps": ticket.deps,
+            "links": ticket.links,
+            "parent": ticket.parent,
+            "tags": ticket.tags,
+            "xref": ticket.xref,
+            "resolution": ticket.resolution,
+            "created": ticket.created,
+            "body": body,
+        }
+        print(json.dumps(data, indent=2))
+        return
+
+    # Read and print raw file content (frontmatter + body)
+    file_path = tickets_dir / f"{ticket_id}.md"
+    print(file_path.read_text())
+
+    # Load all tickets for relationship sections
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    # Blockers: deps that are still open
+    open_deps = [
+        dep_id for dep_id in ticket.deps
+        if dep_id in all_tickets and all_tickets[dep_id].status != "closed"
+    ]
+    if open_deps:
+        print("## Blockers\n")
+        for dep_id in open_deps:
+            dep = all_tickets[dep_id]
+            print(f"- {dep_id} [{dep.status}] - {dep.title}")
+        print()
+
+    # Blocking: tickets that depend on this one
+    blocking = [
+        t for t in all_tickets.values()
+        if ticket_id in t.deps
+    ]
+    if blocking:
+        print("## Blocking\n")
+        for t in sorted(blocking, key=lambda x: x.id):
+            print(f"- {t.id} [{t.status}] - {t.title}")
+        print()
+
+    # Children
+    children = [t for t in all_tickets.values() if t.parent == ticket_id]
+    if children:
+        print("## Children\n")
+        for c in sorted(children, key=lambda x: x.id):
+            print(f"- {c.id} [{c.status}] - {c.title}")
+        print()
+
+    # Linked
+    if ticket.links:
+        print("## Linked\n")
+        for link_id in ticket.links:
+            if link_id in all_tickets:
+                lt = all_tickets[link_id]
+                print(f"- {link_id} [{lt.status}] - {lt.title}")
+            else:
+                print(f"- {link_id} [missing]")
+        print()
 
 
+# ── info ─────────────────────────────────────────────────────
+
+
+# [AI] Info shows frontmatter and relationships but no body/description.
 def _handle_info(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    try:
+        ticket_id = resolve_id(args.id, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    ticket = read_ticket(ticket_id, tickets_dir)
+
+    if args.json:
+        data = {
+            "id": ticket.id,
+            "title": ticket.title,
+            "status": ticket.status,
+            "type": ticket.type,
+            "priority": ticket.priority,
+            "assignee": ticket.assignee,
+            "deps": ticket.deps,
+            "links": ticket.links,
+            "parent": ticket.parent,
+            "tags": ticket.tags,
+            "xref": ticket.xref,
+            "resolution": ticket.resolution,
+            "created": ticket.created,
+        }
+        print(json.dumps(data, indent=2))
+        return
+
+    # Print frontmatter fields only
+    print(f"id: {ticket.id}")
+    print(f"title: {ticket.title}")
+    print(f"status: {ticket.status}")
+    print(f"type: {ticket.type}")
+    print(f"priority: {ticket.priority}")
+    print(f"assignee: {ticket.assignee}")
+    print(f"deps: {ticket.deps}")
+    print(f"links: {ticket.links}")
+    print(f"parent: {ticket.parent}")
+    print(f"tags: {ticket.tags}")
+    print(f"xref: {ticket.xref}")
+    print(f"resolution: {ticket.resolution}")
+    print(f"created: {ticket.created}")
+
+
+# ── path ─────────────────────────────────────────────────────
 
 
 def _handle_path(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    try:
+        ticket_id = resolve_id(args.id, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    file_path = tickets_dir / f"{ticket_id}.md"
+    print(file_path)
 
 
+# ── deps ─────────────────────────────────────────────────────
+
+
+# [AI] Render a dependency tree with box-drawing characters.
+# Without --full, deduplicates nodes (shows each dep once).
+# Children sorted by subtree depth (deepest first), then by ID.
 def _handle_deps(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    try:
+        ticket_id = resolve_id(args.id, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+    all_tickets = _load_all_tickets(tickets_dir)
+    assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
+
+    seen: set[str] = set()
+
+    def _subtree_depth(tid: str, visited: set[str] | None = None) -> int:
+        """Compute max depth of the dependency subtree."""
+        if visited is None:
+            visited = set()
+        if tid in visited or tid not in all_tickets:
+            return 0
+        visited.add(tid)
+        t = all_tickets[tid]
+        if not t.deps:
+            return 0
+        return 1 + max(_subtree_depth(d, visited) for d in t.deps)
+
+    def _print_tree(tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
+        # Dedup check: skip entirely if already seen (unless --full or root)
+        if not args.full and not is_root and tid in seen:
+            return
+
+        t = all_tickets.get(tid)
+        if t is None:
+            label = f"{tid} [missing]"
+        else:
+            label = _format_ticket_line(t)
+
+        if is_root:
+            print(label)
+        else:
+            connector = "└── " if is_last else "├── "
+            print(f"{prefix}{connector}{label}")
+
+        if t is None:
+            return
+
+        seen.add(tid)
+
+        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
+
+        # Sort children by subtree depth desc, then by ID
+        deps_sorted = sorted(
+            t.deps,
+            key=lambda d: (-_subtree_depth(d), d),
+        )
+
+        for i, dep_id in enumerate(deps_sorted):
+            is_last_child = i == len(deps_sorted) - 1
+            _print_tree(dep_id, child_prefix, is_last_child, False)
+
+    _print_tree(ticket_id, "", True, True)
 
 
+# ── ls ───────────────────────────────────────────────────────
+
+
+# [AI] List tickets with filtering, sorting, tree rendering.
+# Default shows open + in_progress. --ready/--blocked use dependency analysis.
+# Tree rendering groups children under parents with box-drawing chars.
 def _handle_ls(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    if not all_tickets:
+        return
+
+    # -- Filtering --
+    filtered: list[Ticket] = []
+
+    if args.completed:
+        filtered = [t for t in all_tickets.values()
+                     if t.status == "closed" and t.resolution == "completed"]
+    elif args.canceled:
+        filtered = [t for t in all_tickets.values()
+                     if t.status == "closed" and t.resolution == "canceled"]
+    elif args.ready:
+        for t in all_tickets.values():
+            if t.status == "closed":
+                continue
+            if _is_blocked(t, all_tickets):
+                continue
+            filtered.append(t)
+    elif args.blocked:
+        for t in all_tickets.values():
+            if t.status == "closed":
+                continue
+            if _is_blocked(t, all_tickets):
+                filtered.append(t)
+    elif args.status:
+        filtered = [t for t in all_tickets.values() if t.status == args.status]
+    else:
+        # Default: open + in_progress
+        filtered = [t for t in all_tickets.values()
+                     if t.status in ("open", "in_progress")]
+
+    # Additional filters (stackable)
+    if args.assignee:
+        filtered = [t for t in filtered if t.assignee == args.assignee]
+    if args.tag:
+        filtered = [t for t in filtered if args.tag in t.tags]
+    if args.type:
+        filtered = [t for t in filtered if t.type == args.type]
+
+    # -- Sorting --
+    if args.sort == "mtime":
+        filtered.sort(
+            key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime
+        )
+    else:
+        # Default: priority asc, then id asc
+        filtered.sort(key=lambda t: (t.priority, t.id))
+
+    # -- JSONL output --
+    if args.jsonl:
+        for t in filtered[:args.limit] if args.limit else filtered:
+            data = {
+                "id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "type": t.type,
+                "priority": t.priority,
+                "assignee": t.assignee,
+                "deps": t.deps,
+                "links": t.links,
+                "parent": t.parent,
+                "tags": t.tags,
+            }
+            print(json.dumps(data))
+        return
+
+    # -- Tree rendering --
+    filtered_ids = {t.id for t in filtered}
+
+    # Build parent->children map for filtered tickets
+    children_map: dict[str | None, list[str]] = {}
+    for t in filtered:
+        children_map.setdefault(t.parent, []).append(t.id)
+
+    # Determine which parents need to be shown as context
+    # (parent not in filtered set but has children in filtered set).
+    # Skip context parents for --ready/--blocked since those filters
+    # explicitly exclude certain tickets.
+    context_parents: set[str] = set()
+    if not args.ready and not args.blocked:
+        for t in filtered:
+            if t.parent and t.parent not in filtered_ids:
+                pid: str | None = t.parent
+                while pid and pid not in filtered_ids:
+                    context_parents.add(pid)
+                    parent_ticket = all_tickets.get(pid)
+                    if parent_ticket:
+                        pid = parent_ticket.parent
+                    else:
+                        break
+
+    # Root tickets: no parent, or parent not in filtered + context
+    visible_ids = filtered_ids | context_parents
+
+    def _get_visible_children(parent_id: str | None) -> list[str]:
+        """Get children of parent_id that are in the visible set."""
+        result: list[str] = []
+        for tid in sorted(visible_ids):
+            t = all_tickets.get(tid)
+            if t and t.parent == parent_id:
+                result.append(tid)
+        return result
+
+    # Check if a parent has any filtered descendants
+    def _has_filtered_descendants(tid: str) -> bool:
+        if tid in filtered_ids:
+            return True
+        for child_id in _get_visible_children(tid):
+            if _has_filtered_descendants(child_id):
+                return True
+        return False
+
+    printed_count = 0
+
+    def _print_ls_tree(
+        tid: str,
+        prefix: str,
+        is_last: bool,
+        is_root: bool,
+    ) -> None:
+        nonlocal printed_count
+        if args.limit and printed_count >= args.limit:
+            return
+
+        t = all_tickets.get(tid)
+        if t is None:
+            return
+
+        is_context = tid in context_parents and tid not in filtered_ids
+
+        if is_root:
+            if is_context:
+                print(_format_ticket_line(t))
+            else:
+                print(_format_ticket_line_with_deps(t))
+                printed_count += 1
+        else:
+            connector = "└── " if is_last else "├── "
+            if is_context:
+                print(f"{prefix}{connector}{_format_ticket_line(t)}")
+            else:
+                print(f"{prefix}{connector}{_format_ticket_line_with_deps(t)}")
+                printed_count += 1
+
+        children = _get_visible_children(tid)
+        # Sort children same as main sort
+        if args.sort == "mtime":
+            children.sort(
+                key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime
+            )
+        else:
+            children.sort(key=lambda c: (all_tickets[c].priority, c))
+
+        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
+
+        for i, child_id in enumerate(children):
+            if args.limit and printed_count >= args.limit:
+                return
+            _print_ls_tree(child_id, child_prefix, i == len(children) - 1, False)
+
+    # Get root-level tickets (no parent or parent not visible)
+    roots: list[str] = []
+    for tid in visible_ids:
+        t = all_tickets.get(tid)
+        if t and (t.parent is None or t.parent not in visible_ids):
+            # Only include if has filtered descendants or is filtered itself
+            if _has_filtered_descendants(tid):
+                roots.append(tid)
+
+    # Sort roots
+    if args.sort == "mtime":
+        roots.sort(key=lambda r: -(tickets_dir / f"{r}.md").stat().st_mtime)
+    else:
+        roots.sort(key=lambda r: (all_tickets[r].priority, r))
+
+    for root_id in roots:
+        if args.limit and printed_count >= args.limit:
+            break
+        _print_ls_tree(root_id, "", True, True)
 
 
+# ── tags ─────────────────────────────────────────────────────
+
+
+# [AI] List all tags with counts, sorted descending. Excludes closed tickets.
 def _handle_tags(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    tag_counts: Counter[str] = Counter()
+    for t in all_tickets.values():
+        if t.status == "closed":
+            continue
+        for tag in t.tags:
+            tag_counts[tag] += 1
+
+    for tag, count in tag_counts.most_common():
+        print(f"{tag} ({count})")
 
 
+# ── links ────────────────────────────────────────────────────
+
+
+# [AI] List all unique link pairs as "id-a <-> id-b" (sorted, deduped).
 def _handle_links(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    seen_pairs: set[tuple[str, str]] = set()
+    for t in all_tickets.values():
+        for link_id in t.links:
+            pair = tuple(sorted([t.id, link_id]))
+            assert len(pair) == 2
+            seen_pairs.add(pair)  # type: ignore[arg-type]
+
+    for a, b in sorted(seen_pairs):
+        print(f"{a} <-> {b}")
 
 
+# ── archive ──────────────────────────────────────────────────
+
+
+# [AI] Move closed tickets to .tickets/archive/. Creates dir on first use.
 def _handle_archive(args: argparse.Namespace) -> None:
-    pass
+    tickets_dir = find_tickets_dir()
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    closed = [t for t in all_tickets.values() if t.status == "closed"]
+
+    if not closed:
+        print("No closed tickets to archive")
+        return
+
+    archive_dir = tickets_dir / "archive"
+    archive_dir.mkdir(exist_ok=True)
+
+    for t in closed:
+        src = tickets_dir / f"{t.id}.md"
+        dst = archive_dir / f"{t.id}.md"
+        shutil.move(str(src), str(dst))
+        print(f"Archived {t.id}")

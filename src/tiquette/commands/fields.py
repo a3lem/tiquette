@@ -4,6 +4,14 @@ import argparse
 import sys
 import typing as T
 
+from tiquette.store import (
+    TicketNotFoundError,
+    TicketsNotFoundError,
+    find_tickets_dir,
+    read_ticket,
+    write_ticket,
+)
+
 VALID_PRIORITIES = ("0", "1", "2", "3", "4")
 VALID_TYPES = ("bug", "feature", "task", "epic", "chore")
 
@@ -51,25 +59,82 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_xref.set_defaults(func=_handle_xref)
 
 
+# [AI]
+# Context: ticket-fields -- shared by all field mutation handlers
+# Intent: load ticket with error handling, return (ticket, tickets_dir)
+def _load_ticket(ticket_id: str) -> tuple[T.Any, T.Any] | None:
+    try:
+        tickets_dir = find_tickets_dir()
+    except TicketsNotFoundError:
+        return None
+    try:
+        ticket = read_ticket(ticket_id, tickets_dir)
+    except TicketNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
+    return ticket, tickets_dir
+
+
+# [AI]
+# Context: ticket-fields requirement=assign
+# Intent: set, reassign, or clear (when omitted) the assignee field
 def _handle_assign(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    ticket.assignee = args.assignee
+    write_ticket(ticket, tickets_dir)
 
 
 def _handle_change_prio(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    ticket.priority = int(args.priority)
+    write_ticket(ticket, tickets_dir)
 
 
 def _handle_change_type(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    ticket.type = args.type
+    write_ticket(ticket, tickets_dir)
 
 
+# [AI]
+# Context: ticket-fields requirement=tag-management
+# Intent: extend tags, deduplicate while preserving order
 def _handle_tag(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    existing = set(ticket.tags)
+    for tag in args.tags:
+        if tag not in existing:
+            ticket.tags.append(tag)
+            existing.add(tag)
+    write_ticket(ticket, tickets_dir)
 
 
 def _handle_untag(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    to_remove = set(args.tags)
+    ticket.tags = [t for t in ticket.tags if t not in to_remove]
+    write_ticket(ticket, tickets_dir)
 
 
 def _handle_xref(args: argparse.Namespace) -> None:
-    pass
+    result = _load_ticket(args.id)
+    if result is None:
+        return
+    ticket, tickets_dir = result
+    ticket.xref = args.xref
+    write_ticket(ticket, tickets_dir)
