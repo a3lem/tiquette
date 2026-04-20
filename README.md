@@ -55,8 +55,8 @@ Fields:
   assign <id> [assignee]                Set or clear assignee
   change-prio <id> <priority>           Update priority: 0-4, 0=highest
   change-type <id> <type>               Change ticket type
-  tag <id> <tag> [tag...]                Append tag(s)
-  untag <id> <tag> [tag...]              Remove tag(s)
+  tag <id> <tag> [tag...]               Append tag(s)
+  untag <id> <tag> [tag...]             Remove tag(s)
   xref <id> [xref]                      Set or clear external reference
   tags                                  List all tags with counts, sorted by frequency
 
@@ -80,6 +80,13 @@ View:
   show <id> [--json]                    Display ticket (frontmatter + body)
   info <id> [--json]                    Frontmatter + computed relationships (no body)
   path <id>                             Print file path for direct editing
+
+Setup:
+  install [options]                     Install integrations
+    --skill                             Install agent SKILL.md
+    --profile {claude}                  Install agent profile
+    --global                            Install to ~/.<profile>/skills/ (user-wide)
+    --dir PATH                          Target project directory [default: cwd]
 ```
 <!-- END:CLI-HELP -->
 

@@ -1,0 +1,14 @@
+{
+  "name": "tiquette",
+  "version": "0.1.0",
+  "description": "Minimal file-based ticket system with dependency tracking for humans and AI agents",
+  "author": {
+    "name": "a3lem",
+    "email": "a3lem@pm.me"
+  },
+  "repository": "https://github.com/a3lem/tiquette",
+  "license": "MIT",
+  "keywords": ["tickets", "task-management", "dependency-tracking", "ai-agent"],
+  "skills": "./skills/",
+  "hooks": "./plugins/claude/hooks/hooks.json"
+}
