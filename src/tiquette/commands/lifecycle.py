@@ -170,3 +170,8 @@ def _handle_status(args: argparse.Namespace) -> None:
         ticket.resolution = None
 
     write_ticket(ticket, tickets_dir)
+    # [AI]
+    # Context: fix-cli-output-gaps -- ticket-lifecycle requirement=transition-output
+    # Intent: confirm which ticket was affected; placed after write so it only
+    #   fires on success (failures sys.exit before reaching this line)
+    sys.stdout.write(ticket.id + "\n")

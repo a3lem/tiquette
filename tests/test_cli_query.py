@@ -144,14 +144,24 @@ class TestLsArgs:
         result = run_tq("ls", "--canceled")
         assert result.returncode == 0
 
-    # spec: ticket-query requirement=list-tickets scenario=filter-by-assignee
+    # spec: ticket-query requirement=list-tickets scenario=filter-by-assignee-long-form
     def test_ls_assignee_filter(self) -> None:
         result = run_tq("ls", "--assignee", "Alice")
         assert result.returncode == 0
 
-    # spec: ticket-query requirement=list-tickets scenario=filter-by-tag
+    # spec: ticket-query requirement=list-tickets scenario=filter-by-assignee-short-form
+    def test_ls_assignee_short_flag(self) -> None:
+        result = run_tq("ls", "-a", "Alice")
+        assert result.returncode == 0
+
+    # spec: ticket-query requirement=list-tickets scenario=filter-by-tag-long-form
     def test_ls_tag_filter(self) -> None:
         result = run_tq("ls", "--tag", "ui")
+        assert result.returncode == 0
+
+    # spec: ticket-query requirement=list-tickets scenario=filter-by-tag-short-form
+    def test_ls_tag_short_flag(self) -> None:
+        result = run_tq("ls", "-T", "ui")
         assert result.returncode == 0
 
     # spec: ticket-query requirement=list-tickets scenario=filter-by-type
@@ -624,6 +634,79 @@ class TestLsBehavior:
         assert "hid-c" not in r.stdout
 
 
+class TestLsLineFormat:
+    """Tests for ls line format: checkbox status, conditional tags."""
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=default-priority-and-type-hidden
+    def test_default_priority_and_type_hidden(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-001", title="Fix login", priority=2, type="task", status="open"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "fmt-001 - [ ] Fix login" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=non-default-priority-shown
+    def test_non_default_priority_shown(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-002", title="Fix login", priority=1, type="task", status="open"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "fmt-002 [P1] - [ ] Fix login" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=non-default-type-shown
+    def test_non_default_type_shown(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-003", title="Add export", priority=2, type="feature", status="open"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "fmt-003 [feature] - [ ] Add export" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=both-non-default-priority-and-type-shown
+    def test_both_non_default_priority_and_type(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-004", title="Refactor", priority=3, type="epic", status="open"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "fmt-004 [P3][epic] - [ ] Refactor" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=in-progress-renders-half-checkbox
+    def test_in_progress_checkbox(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-005", title="Working", priority=2, type="task", status="in_progress"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "fmt-005 - [/] Working" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=closed-renders-checked-checkbox
+    def test_closed_checkbox(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-006", title="Done", status="closed"), td)
+        r = run_tq_env("ls", "--status", "closed", env=_make_env(td))
+        assert "[x]" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=single-dependency-appended-after-title
+    def test_single_dep_appended(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-007", title="Has dep", deps=["fmt-008"]), td)
+        write_ticket(Ticket(id="fmt-008", title="Blocker"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        line = [l for l in r.stdout.splitlines() if "fmt-007" in l][0]
+        assert line.rstrip().endswith("<- [fmt-008]")
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=multiple-dependencies-appended-after-title
+    def test_multi_deps_appended(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-009", title="Has deps", deps=["fmt-010", "fmt-011"]), td)
+        write_ticket(Ticket(id="fmt-010", title="Blocker 1"), td)
+        write_ticket(Ticket(id="fmt-011", title="Blocker 2"), td)
+        r = run_tq_env("ls", env=_make_env(td))
+        line = [l for l in r.stdout.splitlines() if "fmt-009" in l][0]
+        assert line.rstrip().endswith("<- [fmt-010, fmt-011]")
+
+
 class TestDepsBehavior:
     """Behavioral tests for `tq deps`."""
 
@@ -766,3 +849,66 @@ class TestArchiveBehavior:
         run_tq_env("archive", env=_make_env(td))
         archived = (td / "archive" / "arc-6.md").read_text()
         assert original == archived
+
+    def test_archive_skips_ticket_with_dependent(self, tmp_path: Path) -> None:
+        """A closed ticket referenced in another ticket's deps is not archived."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="arc-dep", title="Dep target", status="closed"), td)
+        write_ticket(Ticket(id="arc-src", title="Depends on dep", deps=["arc-dep"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert (td / "arc-dep.md").exists(), "should not be archived"
+        assert "Skipped arc-dep" in r.stderr
+
+    def test_archive_skips_ticket_with_link(self, tmp_path: Path) -> None:
+        """A closed ticket linked from an active ticket is not archived."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="arc-la", title="Linked A", status="closed"), td)
+        write_ticket(Ticket(id="arc-lb", title="Linked B", links=["arc-la"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert (td / "arc-la.md").exists()
+        assert "Skipped arc-la" in r.stderr
+
+    def test_archive_skips_parent_with_children(self, tmp_path: Path) -> None:
+        """A closed ticket that is the parent of another ticket is not archived."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="arc-par", title="Parent", status="closed"), td)
+        write_ticket(Ticket(id="arc-kid", title="Child", parent="arc-par"), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert (td / "arc-par.md").exists()
+        assert "Skipped arc-par" in r.stderr
+
+    def test_archive_allows_mutually_closed_group(self, tmp_path: Path) -> None:
+        """Two closed tickets referencing each other can both be archived."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="arc-ma", title="A", status="closed", links=["arc-mb"]), td)
+        write_ticket(Ticket(id="arc-mb", title="B", status="closed", links=["arc-ma"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert r.returncode == 0
+        assert (td / "archive" / "arc-ma.md").exists()
+        assert (td / "archive" / "arc-mb.md").exists()
+
+    def test_archive_cascade_blocks(self, tmp_path: Path) -> None:
+        """If A is blocked from archive, B (referenced only by A) is also blocked."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        # B is closed, A is closed and depends on B, open ticket C depends on A
+        write_ticket(Ticket(id="arc-cb", title="B", status="closed"), td)
+        write_ticket(Ticket(id="arc-ca", title="A", status="closed", deps=["arc-cb"]), td)
+        write_ticket(Ticket(id="arc-cc", title="C", deps=["arc-ca"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert (td / "arc-ca.md").exists(), "A should not be archived (C depends on it)"
+        assert (td / "arc-cb.md").exists(), "B should not be archived (A stays and depends on it)"
+        assert "Skipped" in r.stderr
+
+    def test_archive_no_eligible_prints_message(self, tmp_path: Path) -> None:
+        """When all closed tickets are referenced, print a clear message."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="arc-ne", title="Referenced", status="closed"), td)
+        write_ticket(Ticket(id="arc-nf", title="Referrer", deps=["arc-ne"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert "No closed tickets eligible for archiving" in r.stdout

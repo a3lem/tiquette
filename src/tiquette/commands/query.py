@@ -73,8 +73,11 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
 
     p_ls.add_argument("--completed", action="store_true", help="Resolution = completed")
     p_ls.add_argument("--canceled", action="store_true", help="Resolution = canceled")
-    p_ls.add_argument("--assignee", help="Filter by assignee")
-    p_ls.add_argument("--tag", help="Filter by tag")
+    # [AI]
+    # Context: fix-cli-output-gaps -- ticket-query requirement=list-tickets
+    # Intent: short aliases match create (-a for assignee); -T avoids conflict with future -t/--type
+    p_ls.add_argument("-a", "--assignee", help="Filter by assignee")
+    p_ls.add_argument("-T", "--tag", help="Filter by tag")
     p_ls.add_argument("--type", help="Filter by type")
     p_ls.add_argument(
         "--sort", choices=VALID_SORTS, default="priority",
@@ -108,9 +111,25 @@ def _load_all_tickets(tickets_dir: Path) -> dict[str, Ticket]:
     return result
 
 
+# [AI]
+# Context: spexl change ls-display-format, requirement=list-ticket-line-format
+# Intent: match tk ls output -- checkbox for status, hide default priority/type
+_STATUS_CHECKBOX: dict[str, str] = {
+    "open": "[ ]",
+    "in_progress": "[/]",
+    "closed": "[x]",
+}
+
+
 def _format_ticket_line(t: Ticket) -> str:
-    """Format a single ticket as: <id> [P<n>][status] - Title"""
-    return f"{t.id} [P{t.priority}][{t.status}] - {t.title}"
+    parts: list[str] = []
+    if t.priority != 2:
+        parts.append(f"[P{t.priority}]")
+    if t.type != "task":
+        parts.append(f"[{t.type}]")
+    tags = f" {''.join(parts)}" if parts else ""
+    checkbox = _STATUS_CHECKBOX.get(t.status, "[?]")
+    return f"{t.id}{tags} - {checkbox} {t.title}"
 
 
 def _format_ticket_line_with_deps(t: Ticket) -> str:
@@ -602,21 +621,61 @@ def _handle_links(args: argparse.Namespace) -> None:
 # ── archive ──────────────────────────────────────────────────
 
 
-# [AI] Move closed tickets to .tickets/archive/. Creates dir on first use.
+# [AI]
+# Context: archive must not orphan references from active tickets
+# Intent: find all tickets that reference a given ticket via deps, links, or parent
+def _find_referrers(
+    ticket_id: str, tickets: dict[str, Ticket],
+) -> list[str]:
+    referrers: list[str] = []
+    for t in tickets.values():
+        if t.id == ticket_id:
+            continue
+        if ticket_id in t.deps or ticket_id in t.links or t.parent == ticket_id:
+            referrers.append(t.id)
+    return sorted(referrers)
+
+
+# [AI]
+# Context: archive command with reference-safety check
+# Intent: refuse to archive closed tickets still referenced by non-archived tickets
+# Logic: iteratively shrink the archivable set -- removing a candidate makes it a
+#   "remaining" ticket whose references block other candidates
 def _handle_archive(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
 
-    closed = [t for t in all_tickets.values() if t.status == "closed"]
+    closed_ids = {t.id for t in all_tickets.values() if t.status == "closed"}
 
-    if not closed:
+    if not closed_ids:
         print("No closed tickets to archive")
+        return
+
+    archivable = set(closed_ids)
+    changed = True
+    while changed:
+        changed = False
+        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
+        for tid in sorted(archivable):
+            if _find_referrers(tid, remaining):
+                archivable.discard(tid)
+                changed = True
+
+    skipped = closed_ids - archivable
+    for tid in sorted(skipped):
+        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
+        refs = _find_referrers(tid, remaining)
+        sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(refs)}\n")
+
+    if not archivable:
+        print("No closed tickets eligible for archiving")
         return
 
     archive_dir = tickets_dir / "archive"
     archive_dir.mkdir(exist_ok=True)
 
-    for t in closed:
+    for tid in sorted(archivable):
+        t = all_tickets[tid]
         src = tickets_dir / f"{t.id}.md"
         dst = archive_dir / f"{t.id}.md"
         shutil.move(str(src), str(dst))

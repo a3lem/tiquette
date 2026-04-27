@@ -1,0 +1,50 @@
+# Changelog
+
+## v0.1.0 — 2026-04-27
+
+Initial release of `tiquette` (`tq`), a Python reimplementation of the `ticket` (`tk`) bash CLI.
+
+### Ticket lifecycle
+
+- `tq create <title>` creates a ticket file in `.tickets/`, printing the generated ID to stdout. The ID uses the current directory name as prefix with a 4-hex suffix (e.g. `myproject-a9f9`).
+- Supports all creation flags: `-p` (priority 0–4), `-t` (type), `-a` (assignee), `-d` (description), `--tag`, `--dep`, `--parent`, `--xref`.
+- `tq start`, `close`, `cancel`, `reopen` transition ticket status. Note: these commands currently produce no output on success (ticket ID is not echoed).
+- `tq close` rejects a parent with open descendants, printing the blocking child IDs to stderr.
+- Closing the last open child of a parent prints a notification: `note: <parent-id> has no remaining open children`.
+- After `tq reopen`, the `resolution` field is set to `null` in the file rather than being removed.
+
+### Listing and filtering
+
+- `tq ls` renders tickets as an indented tree using box-drawing characters for parent-child relationships. Children appear under their parent with `└──` connectors.
+- Line format: `<id> [tags] - [checkbox] <title> <- [deps]`. Priority and type tags are hidden when they are the defaults (priority 2, type "task").
+- Checkboxes: `[ ]` open, `[/]` in_progress, `[x]` closed.
+- `--ready` shows only tickets with no open deps and no open children. A parent with open children is implicitly blocked. Closed deps count as satisfied.
+- `--blocked` shows tickets with at least one open dep or open child. Parents appear as context headings with their blocked children indented.
+- `--status <value>` filters by status. In filtered tree views, non-matching parents appear as unlabelled context headings.
+- `--assignee` and `--tag` filters work (long form only; `-a` and `-T` short flags are not available).
+- `--type`, `--limit`, `--sort`, `--jsonl` flags supported.
+
+### Relationships
+
+- `tq dep` / `tq undep`: add/remove blocking dependencies with cycle detection.
+- `tq nest` / `tq unnest`: set/clear parent-child relationships.
+- `tq link` / `tq unlink`: bidirectional symmetric links.
+- Cycle detection rejects both direct and transitive cycles.
+
+### Other commands
+
+- `tq show <id>`: full ticket content with computed sections (Blockers, Blocking, Children, Linked).
+- `tq info <id>`: frontmatter and relationships only, no body.
+- `tq deps <id>`: transitive dependency tree with box-drawing characters.
+- `tq path <id>`: prints the ticket file path.
+- `tq tags`: tag frequency list for open/in-progress tickets.
+- `tq links`: all linked pairs across the store.
+- `tq archive`: moves closed tickets to `.tickets/archive/`, skipping any referenced by open tickets (with stderr diagnostics). Cascading block detection prevents archiving closed tickets that are deps of blocked-from-archiving tickets.
+- `tq validate`: ticket store validation.
+- Partial ID resolution: `tq show 9a50` resolves to the matching full ID.
+
+### Storage
+
+- Tickets are markdown files with YAML frontmatter in `.tickets/`.
+- The `.tickets/` directory is created automatically on first `tq create`.
+- The tickets directory can be overridden with the `TICKETS_DIR` environment variable.

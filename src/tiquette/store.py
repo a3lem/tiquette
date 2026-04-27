@@ -128,6 +128,11 @@ def _serialize_frontmatter(ticket: Ticket) -> str:
     lines: list[str] = []
     for key in _FIELD_ORDER:
         value = getattr(ticket, key)
+        # [AI]
+        # Context: fix-cli-output-gaps -- ticket-store requirement=ticket-file-format
+        # Intent: omit nullable fields entirely when null so the file stays clean
+        if key in _NULLABLE_FIELDS and value is None:
+            continue
         lines.append(f"{key}: {_format_yaml_value(key, value)}")
     return "\n".join(lines) + "\n"
 

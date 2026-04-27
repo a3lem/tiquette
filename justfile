@@ -8,3 +8,6 @@ plugins:
     uv run scripts/generate-plugin-files.py
 
 sync: sync-readme plugins
+
+test:
+    uv run pytest -n 4

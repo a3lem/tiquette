@@ -4,7 +4,8 @@ import argparse
 import sys
 import typing as T
 
-from tiquette.commands import content, fields, lifecycle, query, relationships
+from tiquette.commands import content, fields, lifecycle, query, relationships, validate
+from tiquette.store import TicketsNotFoundError
 
 
 # [AI]
@@ -52,6 +53,9 @@ View:
   show <id>                             Display ticket
   info <id>                             Frontmatter + relationships
   path <id>                             Print file path
+
+Maintenance:
+  validate                              Check tickets for integrity problems
 
 Run tq --help for full reference with all flags and options.
 """
@@ -127,6 +131,9 @@ View:
   show <id> [--json]                    Display ticket (frontmatter + body)
   info <id> [--json]                    Frontmatter + computed relationships (no body)
   path <id>                             Print file path for direct editing
+
+Maintenance:
+  validate                              Check all tickets for referential integrity
 """
 
 
@@ -166,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     fields.register(subparsers)
     content.register(subparsers)
     query.register(subparsers)
+    validate.register(subparsers)
 
     return parser
 
@@ -178,4 +186,8 @@ def main(argv: list[str] | None = None) -> None:
         sys.stdout.write(HELP_SUMMARY)
         return
 
-    args.func(args)
+    try:
+        args.func(args)
+    except TicketsNotFoundError:
+        sys.stderr.write("No .tickets/ directory found\n")
+        sys.exit(1)

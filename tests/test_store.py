@@ -259,7 +259,8 @@ class TestWriteTicket:
         assert "links: []" in content
         assert "tags: []" in content
 
-    def test_write_null_fields(self, tmp_path: Path) -> None:
+    # spec: ticket-store requirement=ticket-file-format scenario=file-structure
+    def test_write_nullable_fields_absent_when_none(self, tmp_path: Path) -> None:
         from tiquette.store import Ticket, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
@@ -268,8 +269,30 @@ class TestWriteTicket:
         write_ticket(t, tickets_dir)
 
         content = (tickets_dir / "proj-0001.md").read_text()
-        assert "assignee: null" in content
-        assert "resolution: null" in content
+        # Nullable fields must be absent when null, not written as "null"
+        assert "assignee" not in content
+        assert "resolution" not in content
+        assert "parent" not in content
+        assert "xref" not in content
+
+    # spec: ticket-store requirement=ticket-file-format scenario=nullable-fields-present-when-non-null
+    def test_write_nullable_fields_present_when_set(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        t = Ticket(
+            id="proj-0001", title="Test",
+            assignee="Alice", parent="parent-001",
+            xref="gh-42", resolution="completed",
+        )
+        write_ticket(t, tickets_dir)
+
+        content = (tickets_dir / "proj-0001.md").read_text()
+        assert "assignee: Alice" in content
+        assert "parent: parent-001" in content
+        assert "xref: gh-42" in content
+        assert "resolution: completed" in content
 
 
 class TestReadTicket:
@@ -376,6 +399,25 @@ class TestResolveId:
         write_ticket(Ticket(id="abc-5678", title="second"), tickets_dir)
         with pytest.raises(AmbiguousIDError, match="ambiguous ID 'abc'"):
             resolve_id("abc", tickets_dir)
+
+
+class TestNullableFieldsRoundtrip:
+    """Nullable fields are omitted from the file when None and round-trip correctly."""
+
+    # spec: ticket-store requirement=ticket-file-format scenario=nullable-fields-absent-after-being-cleared
+    def test_null_nullable_fields_roundtrip_to_none(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, read_ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        t = Ticket(id="proj-0001", title="Test")
+        write_ticket(t, tickets_dir)
+        loaded = read_ticket("proj-0001", tickets_dir)
+
+        assert loaded.assignee is None
+        assert loaded.parent is None
+        assert loaded.xref is None
+        assert loaded.resolution is None
 
     def test_nonexistent_id_error(self, tmp_path: Path) -> None:
         from tiquette.store import Ticket, TicketNotFoundError, resolve_id, write_ticket

@@ -274,7 +274,7 @@ class TestCreateBehavior:
         assert "deps: []" in content
         assert "links: []" in content
         assert "tags: []" in content
-        assert "assignee: null" in content
+        assert "assignee" not in content  # nullable fields omitted when null
         # created should be valid ISO 8601
         for line in content.splitlines():
             if line.startswith("created: "):
@@ -422,3 +422,55 @@ class TestStatusTransitionBehavior:
         result = run_tq("start", "nonexistent", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode != 0
         assert "ticket" in result.stderr and "not found" in result.stderr
+
+
+class TestTransitionOutput:
+    """Transition commands print the ticket ID to stdout on success."""
+
+    # spec: ticket-lifecycle requirement=transition-output scenario=start-prints-ticket-id
+    def test_start_prints_ticket_id(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(_make_ticket("test-0001"), tickets_dir)
+        result = run_tq("start", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        assert "test-0001" in result.stdout
+
+    # spec: ticket-lifecycle requirement=transition-output scenario=close-prints-ticket-id
+    def test_close_prints_ticket_id(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(_make_ticket("test-0001"), tickets_dir)
+        result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        assert "test-0001" in result.stdout
+
+    # spec: ticket-lifecycle requirement=transition-output scenario=cancel-prints-ticket-id
+    def test_cancel_prints_ticket_id(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(_make_ticket("test-0001"), tickets_dir)
+        result = run_tq("cancel", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        assert "test-0001" in result.stdout
+
+    # spec: ticket-lifecycle requirement=transition-output scenario=reopen-prints-ticket-id
+    def test_reopen_prints_ticket_id(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(_make_ticket("test-0001", status="closed", resolution="completed"), tickets_dir)
+        result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        assert "test-0001" in result.stdout
+
+    # spec: ticket-lifecycle requirement=transition-output scenario=failed-transition-does-not-print-id
+    def test_failed_transition_prints_nothing_to_stdout(self, tmp_path: Path) -> None:
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        result = run_tq("close", "nonexistent", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode != 0
+        assert result.stdout == ""
