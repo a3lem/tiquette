@@ -221,9 +221,61 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - When the user runs `tq ls --limit 0`
 - Then the command exits non-zero
 
+## Requirement: List ticket line format
+
+The system SHALL format each ticket line in `ls` output as: `<id> <tags> - <checkbox> <title>` where:
+
+- The checkbox represents status: `[ ]` for open, `[/]` for in_progress, `[x]` for closed.
+- Zero or more tag tokens may appear after the ID, each individually bracketed:
+  - The priority tag `[P<n>]` SHALL be shown only when priority is not 2 (the default).
+  - The type tag (e.g. `[epic]`, `[feature]`) SHALL be shown only when the type is not "task" (the default).
+  - When both are present, priority comes first: `[P1][epic]` (no space between tags).
+- When no tags are present, the format collapses to `<id> - <checkbox> <title>`.
+- Dependencies are appended after the title as a comma-separated list: `<- [dep-id1, dep-id2]`.
+
+### Scenario: Default priority and type hidden
+- Given ticket "fmt-001" exists with priority 2, type "task", status open, title "Fix login"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" is `fmt-001 - [ ] Fix login`
+
+### Scenario: Non-default priority shown
+- Given ticket "fmt-001" exists with priority 1, type "task", status open, title "Fix login"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" is `fmt-001 [P1] - [ ] Fix login`
+
+### Scenario: Non-default type shown
+- Given ticket "fmt-001" exists with priority 2, type "feature", status open, title "Add export"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" is `fmt-001 [feature] - [ ] Add export`
+
+### Scenario: Both non-default priority and type shown
+- Given ticket "fmt-001" exists with priority 3, type "epic", status open, title "Refactor"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" is `fmt-001 [P3][epic] - [ ] Refactor`
+
+### Scenario: In-progress renders half checkbox
+- Given ticket "fmt-001" exists with priority 2, type "task", status in_progress, title "Working"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" is `fmt-001 - [/] Working`
+
+### Scenario: Closed renders checked checkbox
+- Given ticket "fmt-001" exists with status closed
+- When the user runs `tq ls --status closed`
+- Then the line contains `[x]`
+
+### Scenario: Single dependency appended after title
+- Given ticket "fmt-001" depends on "fmt-002"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" ends with `<- [fmt-002]`
+
+### Scenario: Multiple dependencies appended after title
+- Given ticket "fmt-001" depends on "fmt-002" and "fmt-003"
+- When the user runs `tq ls`
+- Then the line for "fmt-001" ends with `<- [fmt-002, fmt-003]`
+
 ## Requirement: List with tree rendering
 
-The system SHALL render parent-child relationships as indented trees in `ls` output by default.
+The system SHALL render parent-child relationships as indented trees in `ls` output by default. Each node in the tree uses the line format from "List ticket line format", with box-drawing characters prepended for child nodes.
 
 ### Scenario: Parent with children indented
 - Given ticket "tree-0001" has children "tree-0002" and "tree-0003"
@@ -305,6 +357,10 @@ The system SHALL list all linked pairs across tickets when `tq links` is invoked
 
 The system SHALL move closed tickets to `.tickets/archive/` when `tq archive` is invoked.
 
+The system SHALL NOT archive a closed ticket when any non-archived ticket references it via `deps`, `links`, or `parent`. Referenced tickets are skipped with a diagnostic on stderr naming the referrers.
+
+When a ticket is blocked from archiving, any closed ticket it references SHALL also be blocked (cascading). The archivable set is computed iteratively until stable.
+
 ### Scenario: Archive moves closed tickets
 - Given tickets "t-001" (closed) and "t-002" (open) exist
 - When the user runs `tq archive`
@@ -330,6 +386,41 @@ The system SHALL move closed tickets to `.tickets/archive/` when `tq archive` is
 ### Scenario: Archived ticket file is intact
 - Given ticket "t-001" is closed and archived
 - Then the archived file contains the original frontmatter and content
+
+### Scenario: Skips ticket referenced as dependency
+- Given closed ticket "t-001" and open ticket "t-002" with deps including "t-001"
+- When the user runs `tq archive`
+- Then "t-001" remains in `.tickets/`
+- And stderr contains "Skipped t-001: referenced by t-002"
+
+### Scenario: Skips ticket referenced as link
+- Given closed ticket "t-001" and open ticket "t-002" with links including "t-001"
+- When the user runs `tq archive`
+- Then "t-001" remains in `.tickets/`
+- And stderr contains "Skipped t-001"
+
+### Scenario: Skips ticket that is a parent
+- Given closed ticket "t-001" and open ticket "t-002" with parent "t-001"
+- When the user runs `tq archive`
+- Then "t-001" remains in `.tickets/`
+- And stderr contains "Skipped t-001"
+
+### Scenario: Mutually-closed group archives together
+- Given closed tickets "t-001" and "t-002" linked to each other, no open tickets reference either
+- When the user runs `tq archive`
+- Then both "t-001" and "t-002" are moved to `.tickets/archive/`
+
+### Scenario: Cascade blocks dependent closed tickets
+- Given closed "t-b" and closed "t-a" (deps: ["t-b"]), and open "t-c" (deps: ["t-a"])
+- When the user runs `tq archive`
+- Then "t-a" remains (referenced by open "t-c")
+- And "t-b" remains (referenced by remaining "t-a")
+- And stderr contains "Skipped"
+
+### Scenario: No eligible tickets
+- Given closed ticket "t-001" and open ticket "t-002" with deps including "t-001"
+- When the user runs `tq archive`
+- Then the output contains "No closed tickets eligible for archiving"
 
 ## Requirement: Path command
 
