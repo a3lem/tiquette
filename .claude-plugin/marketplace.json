@@ -1,0 +1,25 @@
+{
+  "name": "tiquette",
+  "owner": {
+    "name": "a3lem",
+    "email": "a3lem@pm.me"
+  },
+  "metadata": {
+    "description": "Minimal file-based ticket system with dependency tracking for humans and AI agents",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "tiquette",
+      "source": "./",
+      "description": "Minimal file-based ticket system with dependency tracking for humans and AI agents",
+      "author": {
+        "name": "a3lem",
+        "email": "a3lem@pm.me"
+      },
+      "repository": "https://github.com/a3lem/tiquette",
+      "license": "MIT",
+      "keywords": ["tickets", "task-management", "dependency-tracking", "ai-agent"]
+    }
+  ]
+}

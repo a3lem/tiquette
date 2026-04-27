@@ -1,0 +1,4 @@
+metadata:
+  author: plugin_src
+  version: {{ version }}
+  note: Generated. Do not modify

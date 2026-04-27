@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "tail -n +5 ${CLAUDE_PLUGIN_ROOT}/plugins/claude/hooks/prime.md",
+            "command": "cat ${CLAUDE_PLUGIN_ROOT}/plugins/claude/hooks/prime.md",
             "timeout": 2
           }
         ]
