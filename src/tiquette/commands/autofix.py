@@ -57,14 +57,10 @@ def _plan_prefix_renames(
     reserved = set(all_ids)
 
     for tid in sorted(all_ids):
-        # Split off the trailing -<4hex> suffix
         if "-" not in tid:
             continue
         current_prefix, _, suffix = tid.rpartition("-")
         if current_prefix == expected_prefix:
-            continue
-        if len(suffix) != 4 or any(c not in "0123456789abcdef" for c in suffix):
-            # not a generated ID -- leave alone
             continue
         candidate = f"{expected_prefix}-{suffix}"
         while candidate in reserved:

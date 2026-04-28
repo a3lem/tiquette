@@ -96,6 +96,38 @@ class TestAutofix:
         assert len(new_files) == 2
         assert "tiqt-dead.md" in new_files
 
+    def test_mixed_stale_prefixes_all_renamed(self, tmp_path: Path) -> None:
+        # Several tickets with a variety of stale prefixes, plus a non-hex
+        # suffix imported from the old `tk` tool. All should be renamed.
+        td = _make_project(tmp_path, "tiquette")
+        archive = td / "archive"
+        archive.mkdir()
+        write_ticket(Ticket(id="tiquette-aaaa", title="Stale long prefix"), td)
+        write_ticket(Ticket(id="tk-bbbb", title="Old tk import",
+                            deps=["tiquette-aaaa"]), td)
+        write_ticket(Ticket(id="foo-zzzz", title="Non-hex suffix",
+                            parent="tk-bbbb"), td)
+        write_ticket(Ticket(id="tiquette-cccc", title="Archived stale"), archive)
+
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+
+        for stale in ("tiquette-aaaa.md", "tk-bbbb.md", "foo-zzzz.md"):
+            assert not (td / stale).exists(), stale
+        assert not (archive / "tiquette-cccc.md").exists()
+
+        new_active = sorted(p.stem for p in td.glob("*.md"))
+        assert new_active == ["tiqt-aaaa", "tiqt-bbbb", "tiqt-zzzz"], new_active
+        assert (archive / "tiqt-cccc.md").exists()
+
+        # Cross-references rewritten to new IDs
+        b = read_ticket("tiqt-bbbb", td)
+        assert b.deps == ["tiqt-aaaa"]
+        z = read_ticket("tiqt-zzzz", td)
+        assert z.parent == "tiqt-bbbb"
+
+        assert "- Renamed 4 tickets to current ID prefix" in r.stdout
+
     def test_archived_tickets_renamed_too(self, tmp_path: Path) -> None:
         td = _make_project(tmp_path, "tiquette")
         archive = td / "archive"
