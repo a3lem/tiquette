@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.1.2 – 2026-04-28
 
 - changed: ticket ID prefix is now an abbreviation (max 4 chars) of the project directory name. Multi-token names use first letters of each token; single-token names use the first 4 characters; short multi-token names fill from the trailing characters of the last token.
 - changed: prefix prefers a consonant in the 4th position. If the candidate 4th char is a vowel, scan further chars for a consonant; if none, fall back to a 3-char prefix (or accept the vowel if char 3 is also a vowel).
