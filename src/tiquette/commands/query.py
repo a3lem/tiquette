@@ -392,7 +392,7 @@ def _handle_deps(args: argparse.Namespace) -> None:
 
 
 # [AI] List tickets with filtering, sorting, tree rendering.
-# Default shows open + in_progress. --ready/--blocked use dependency analysis.
+# Default shows all statuses. --ready/--blocked use dependency analysis.
 # Tree rendering groups children under parents with box-drawing chars.
 def _handle_ls(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
@@ -426,9 +426,10 @@ def _handle_ls(args: argparse.Namespace) -> None:
     elif args.status:
         filtered = [t for t in all_tickets.values() if t.status == args.status]
     else:
-        # Default: open + in_progress
-        filtered = [t for t in all_tickets.values()
-                     if t.status in ("open", "in_progress")]
+        # [AI]
+        # Context: user-reported bug -- default ls hid closed tickets
+        # Intent: include all statuses by default; users can filter via --status
+        filtered = list(all_tickets.values())
 
     # Additional filters (stackable)
     if args.assignee:

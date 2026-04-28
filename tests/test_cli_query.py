@@ -393,7 +393,7 @@ class TestLsBehavior:
         assert r.returncode == 0
         assert "ls-001" in r.stdout
         assert "ls-002" in r.stdout
-        assert "ls-003" not in r.stdout
+        assert "ls-003" in r.stdout
 
     def test_list_with_status_filter(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"

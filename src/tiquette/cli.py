@@ -4,7 +4,7 @@ import argparse
 import sys
 import typing as T
 
-from tiquette.commands import content, fields, lifecycle, query, relationships, validate
+from tiquette.commands import autofix, content, fields, lifecycle, query, relationships, validate
 from tiquette.store import TicketsNotFoundError
 
 
@@ -56,6 +56,7 @@ View:
 
 Maintenance:
   validate                              Check tickets for integrity problems
+  autofix                               Update tickets to match current behavior
 
 Run tq --help for full reference with all flags and options.
 """
@@ -116,7 +117,7 @@ Content:
   add-note <id> <text>                  Append timestamped note (or pipe via stdin)
 
 View:
-  ls [options]                          List tickets [default: open + in_progress]
+  ls [options]                          List tickets [default: all statuses]
     --status X                          Filter: open|in_progress|closed
     --ready                             Actionable: no unresolved deps or open children
     --blocked                           Has unresolved deps or open children
@@ -134,6 +135,7 @@ View:
 
 Maintenance:
   validate                              Check all tickets for referential integrity
+  autofix                               Update tickets to be consistent with current behavior
 """
 
 
@@ -174,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
     content.register(subparsers)
     query.register(subparsers)
     validate.register(subparsers)
+    autofix.register(subparsers)
 
     return parser
 

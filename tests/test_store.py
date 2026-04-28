@@ -74,8 +74,8 @@ class TestFindTicketsDir:
 class TestGenerateId:
     """ID generation using directory name prefix + hex suffix."""
 
-    # spec: ticket-store requirement=id-generation scenario=id-format
-    def test_id_format(self, tmp_path: Path) -> None:
+    # spec: ticket-store requirement=id-generation scenario=single-word-directory
+    def test_id_format_single_word(self, tmp_path: Path) -> None:
         from tiquette.store import generate_id
 
         project_dir = tmp_path / "myproj"
@@ -84,7 +84,79 @@ class TestGenerateId:
         tickets_dir.mkdir()
 
         ticket_id = generate_id(tickets_dir)
-        assert re.match(r"myproj-[a-f0-9]{4}$", ticket_id)
+        assert re.match(r"mypr-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=multi-word-directory-with-four-or-more-tokens
+    def test_id_format_four_tokens(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "my-cool-awesome-project"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"mcap-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=multi-word-directory-with-fewer-than-four-tokens
+    def test_id_format_short_tokens(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "ai-ml-research"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"amrh-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=vowel-ending-replaced-by-next-consonant-in-single-token-name
+    def test_id_format_single_token_vowel_swap(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "tiquette"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"tiqt-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=vowel-ending-replaced-by-consonant-scanned-back-in-multi-token-fill
+    def test_id_format_multi_token_vowel_swap(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "ai-ml-data"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"amdt-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=falls-back-to-3-char-prefix-when-no-consonant-available-and-char-3-is-consonant
+    def test_id_format_three_char_fallback(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "strae"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"str-[a-f0-9]{4}$", ticket_id), ticket_id
+
+    # spec: ticket-store requirement=id-generation scenario=keeps-vowel-ending-when-char-3-is-also-a-vowel
+    def test_id_format_keeps_vowel_when_char3_vowel(self, tmp_path: Path) -> None:
+        from tiquette.store import generate_id
+
+        project_dir = tmp_path / "stoau"
+        project_dir.mkdir()
+        tickets_dir = project_dir / ".tickets"
+        tickets_dir.mkdir()
+
+        ticket_id = generate_id(tickets_dir)
+        assert re.match(r"stoa-[a-f0-9]{4}$", ticket_id), ticket_id
 
     # spec: ticket-store requirement=id-generation scenario=uniqueness
     def test_ids_are_unique(self, tmp_path: Path) -> None:

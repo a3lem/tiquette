@@ -93,11 +93,61 @@ def find_tickets_dir() -> Path:
 # ── ID generation ───────────────────────────────────────────
 
 
+_VOWELS = frozenset("aeiou")
+
+
+def _is_vowel(c: str) -> bool:
+    return c.lower() in _VOWELS
+
+
+# [AI]
+# Context: user request -- abbreviate prefix to max 4 chars; prefer consonant ending
+# Intent: tokenize project root on - and _, take first letter of each token.
+#   If <4 chars from word starts, fill with last chars of last token.
+#   Single-token names take first 4 chars.
+#   If the resulting 4th char is a vowel, scan additional chars for a
+#   consonant; if none found, fall back to a 3-char prefix iff char 3 is
+#   itself a consonant, otherwise accept the vowel.
+def _abbreviate(name: str) -> str:
+    tokens = [t for t in name.replace("_", "-").split("-") if t]
+    if not tokens:
+        return name[:4].lower()
+
+    if len(tokens) == 1:
+        word = tokens[0].lower()
+        base = word[:4]
+        # extra chars to scan when char 4 is a vowel: rest of the word
+        scan = word[4:]
+    else:
+        initials = "".join(t[0] for t in tokens)[:4].lower()
+        if len(initials) >= 4:
+            base = initials
+            scan = ""
+        else:
+            last = tokens[-1].lower()
+            needed = 4 - len(initials)
+            tail = last[-needed:] if len(last) >= needed else last
+            base = initials + tail
+            # scan chars of last token before the tail, closest-to-tail first
+            scan = last[:-needed][::-1] if len(last) > needed else ""
+
+    if len(base) < 4:
+        return base
+    if not _is_vowel(base[3]):
+        return base
+    for c in scan:
+        if not _is_vowel(c):
+            return base[:3] + c
+    if not _is_vowel(base[2]):
+        return base[:3]
+    return base
+
+
 # [AI]
 # Context: ticket-store requirement=id-generation
-# Intent: <project-dir-name>-<4 hex chars>, retry on collision
+# Intent: <abbreviated-project-prefix>-<4 hex chars>, retry on collision
 def generate_id(tickets_dir: Path) -> str:
-    prefix = tickets_dir.parent.name
+    prefix = _abbreviate(tickets_dir.parent.name)
     for _ in range(100):
         suffix = secrets.token_hex(2)  # 4 hex chars
         ticket_id = f"{prefix}-{suffix}"

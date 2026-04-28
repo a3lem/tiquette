@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- changed: ticket ID prefix is now an abbreviation (max 4 chars) of the project directory name. Multi-token names use first letters of each token; single-token names use the first 4 characters; short multi-token names fill from the trailing characters of the last token.
+- changed: prefix prefers a consonant in the 4th position. If the candidate 4th char is a vowel, scan further chars for a consonant; if none, fall back to a 3-char prefix (or accept the vowel if char 3 is also a vowel).
+- added: `tq autofix` maintenance command that reconciles tickets with current behavior. Renames tickets with stale ID prefixes, propagating the new IDs into every `parent`, `deps`, and `links` reference (including archived tickets) so nothing is orphaned.
+- fixed: `tq ls` now includes closed tickets by default. Previously the default filter hid `closed` status.
+
 ## v0.1.0 — 2026-04-27
 
 Initial release of `tiquette` (`tq`), a Python reimplementation of the `ticket` (`tk`) bash CLI.

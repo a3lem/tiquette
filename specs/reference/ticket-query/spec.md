@@ -92,7 +92,7 @@ The system SHALL display a ticket's frontmatter and computed relationships (with
 
 ## Requirement: List tickets
 
-The system SHALL list tickets matching filter criteria when `tq ls` is invoked. The default filter shows `open` and `in_progress` tickets, sorted by priority.
+The system SHALL list tickets matching filter criteria when `tq ls` is invoked. With no filter flags, all tickets (regardless of status) are shown, sorted by priority.
 
 ### Scenario: List all open tickets
 - Given tickets "list-0001" and "list-0002" exist (status open)
