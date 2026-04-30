@@ -69,6 +69,14 @@ tq nest child1 child2 parent   # both children move under parent
 
 `tq` does not auto-assign to the git user. Always pass `-a` explicitly when creating or assigning.
 
+### Closing or cancelling a parent
+
+Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) with the same resolution as the parent. Already-closed descendants are left alone. Each affected ID is printed on its own line in write order.
+
+### Checkbox glyphs in `tq ls`
+
+`[ ]` open, `[/]` in_progress, `[x]` closed-completed, `[~]` closed-cancelled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "closed".
+
 ### Listing shows tree context
 
 When a filtered ticket has a parent outside the result set, the parent appears as a context row (shown but not counted against `--limit`). `--ready` and `--blocked` skip context parents.

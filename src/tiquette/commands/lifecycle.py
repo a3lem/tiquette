@@ -46,7 +46,10 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_create.add_argument("--dep", action="append", default=None, help="Blocker ID (repeat for multiple)")
     p_create.set_defaults(func=_handle_create)
 
-    # [AI] Simple status-transition commands: one required positional id
+    # [AI]
+    # Context: cascade-close-cancel -- ticket-lifecycle requirements=close-command,cancel-command
+    # Intent: close/cancel gain -f/--force to cascade through open descendants;
+    #   start/reopen stay flagless.
     for name, helptext in [
         ("start", "Set status to in_progress"),
         ("close", "Set status to closed (completed)"),
@@ -55,6 +58,11 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     ]:
         p = subparsers.add_parser(name, help=helptext)
         p.add_argument("id", help="Ticket ID")
+        if name in ("close", "cancel"):
+            p.add_argument(
+                "-f", "--force", action="store_true",
+                help="Force closure; cascade to open descendants",
+            )
         p.set_defaults(func=_handle_status)
 
 
@@ -156,19 +164,37 @@ def _handle_status(args: argparse.Namespace) -> None:
 
     if command == "start":
         ticket.status = "in_progress"
-    elif command == "close":
+    elif command in ("close", "cancel"):
+        # [AI]
+        # Context: cascade-close-cancel -- ticket-lifecycle requirements=close-command,cancel-command
+        # Intent: shared descendant rejection + optional force-cascade. Resolution
+        #   ("completed" vs "canceled") is the only behavioural difference between
+        #   the two commands once cascade is unified.
+        resolution = "completed" if command == "close" else "canceled"
         open_desc = _find_open_descendants(ticket.id, tickets_dir)
-        if open_desc:
+        if open_desc and not args.force:
             desc_list = ", ".join(open_desc)
             sys.stderr.write(f"error: {ticket.id} has open descendants: {desc_list}\n")
             sys.exit(1)
+        # Cascade descendants first so a partial failure leaves the parent open
+        # (and therefore re-runnable) rather than closed-with-orphans. Each
+        # cascaded ID is printed after its successful write so the user sees
+        # exactly what landed on disk if a later write fails.
+        for desc_id in open_desc:
+            desc = read_ticket(desc_id, tickets_dir)
+            desc.status = "closed"
+            desc.resolution = resolution
+            write_ticket(desc, tickets_dir)
+            sys.stdout.write(desc.id + "\n")
         ticket.status = "closed"
-        ticket.resolution = "completed"
-        _check_last_open_child(ticket, tickets_dir)
-    elif command == "cancel":
-        ticket.status = "closed"
-        ticket.resolution = "canceled"
-    elif command == "reopen":
+        ticket.resolution = resolution
+        write_ticket(ticket, tickets_dir)
+        sys.stdout.write(ticket.id + "\n")
+        if command == "close":
+            _check_last_open_child(ticket, tickets_dir)
+        return
+
+    if command == "reopen":
         ticket.status = "open"
         ticket.resolution = None
 

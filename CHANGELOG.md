@@ -1,7 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## v0.1.3 – 2026-04-30
 
+- changed (BREAKING): `tq cancel` now rejects a ticket with open descendants (parity with `tq close`). Pass `-f` / `--force` to cascade-cancel the whole subtree.
+- added: `tq close -f` / `--force` to cascade-close a parent and all open descendants as `completed`.
+- changed (BREAKING): `tq ls` renders canceled tickets as `[~]` instead of `[x]`. `[x]` now means "closed, completed" only.
 - added: `tq ls --archived` lists only archived tickets.
 - added: `tq ls --all` (short: `-a`) lists active and archived tickets together. Mirrors `ls -a`.
 - changed (BREAKING): `tq ls` short flag for `--assignee` is now `-A` (was `-a`). Use `-A "Alice"` or `--assignee "Alice"`.

@@ -88,8 +88,10 @@ Lifecycle:
     --tag TAG                           Tag (repeat for multiple)
     --dep ID                            Blocker ID (repeat for multiple)
   start <id>                            Set status to in_progress
-  close <id>                            Set status to closed (resolution: completed)
-  cancel <id>                           Set status to closed (resolution: canceled)
+  close <id> [-f]                       Set status to closed (resolution: completed)
+                                        -f/--force cascades through open descendants
+  cancel <id> [-f]                      Set status to closed (resolution: canceled)
+                                        -f/--force cascades through open descendants
   reopen <id>                           Set status to open (clears resolution)
   archive                               Move closed/canceled tickets to archive directory
 

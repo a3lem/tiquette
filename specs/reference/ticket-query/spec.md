@@ -251,7 +251,7 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 
 The system SHALL format each ticket line in `ls` output as: `<id> <tags> - <checkbox> <title>` where:
 
-- The checkbox represents status: `[ ]` for open, `[/]` for in_progress, `[x]` for closed.
+- The checkbox represents lifecycle state: `[ ]` for open, `[/]` for in_progress, `[x]` for closed with resolution `completed`, and `[~]` for closed with resolution `canceled`.
 - Zero or more tag tokens may appear after the ID, each individually bracketed:
   - The priority tag `[P<n>]` SHALL be shown only when priority is not 2 (the default).
   - The type tag (e.g. `[epic]`, `[feature]`) SHALL be shown only when the type is not "task" (the default).
@@ -284,10 +284,16 @@ The system SHALL format each ticket line in `ls` output as: `<id> <tags> - <chec
 - When the user runs `tq ls`
 - Then the line for "fmt-001" is `fmt-001 - [/] Working`
 
-### Scenario: Closed renders checked checkbox
-- Given ticket "fmt-001" exists with status closed
+### Scenario: Completed renders checked checkbox
+- Given ticket "fmt-001" exists with status closed and resolution `completed`
 - When the user runs `tq ls --status closed`
 - Then the line contains `[x]`
+
+### Scenario: Canceled renders tilde checkbox
+- Given ticket "fmt-001" exists with status closed and resolution `canceled`
+- When the user runs `tq ls --status closed`
+- Then the line contains `[~]`
+- And the line does not contain `[x]`
 
 ### Scenario: Single dependency appended after title
 - Given ticket "fmt-001" depends on "fmt-002"

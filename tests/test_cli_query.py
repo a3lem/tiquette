@@ -862,13 +862,22 @@ class TestLsLineFormat:
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-005 - [/] Working" in r.stdout
 
-    # spec: ticket-query requirement=list-ticket-line-format scenario=closed-renders-checked-checkbox
-    def test_closed_checkbox(self, tmp_path: Path) -> None:
+    # spec: ticket-query requirement=list-ticket-line-format scenario=completed-renders-checked-checkbox
+    def test_completed_checkbox(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-006", title="Done", status="closed"), td)
+        write_ticket(Ticket(id="fmt-006", title="Done", status="closed", resolution="completed"), td)
         r = run_tq_env("ls", "--status", "closed", env=_make_env(td))
         assert "[x]" in r.stdout
+
+    # spec: ticket-query requirement=list-ticket-line-format scenario=canceled-renders-tilde-checkbox
+    def test_canceled_checkbox(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="fmt-006c", title="Abandoned", status="closed", resolution="canceled"), td)
+        r = run_tq_env("ls", "--status", "closed", env=_make_env(td))
+        assert "[~]" in r.stdout
+        assert "[x]" not in r.stdout
 
     # spec: ticket-query requirement=list-ticket-line-format scenario=single-dependency-appended-after-title
     def test_single_dep_appended(self, tmp_path: Path) -> None:

@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.1.0
+  version: 0.1.3
   note: Generated. Do not modify
 ---
 
@@ -71,8 +71,10 @@ Lifecycle:
     --tag TAG                           Tag (repeat for multiple)
     --dep ID                            Blocker ID (repeat for multiple)
   start <id>                            Set status to in_progress
-  close <id>                            Set status to closed (resolution: completed)
-  cancel <id>                           Set status to closed (resolution: canceled)
+  close <id> [-f]                       Set status to closed (resolution: completed)
+                                        -f/--force cascades through open descendants
+  cancel <id> [-f]                      Set status to closed (resolution: canceled)
+                                        -f/--force cascades through open descendants
   reopen <id>                           Set status to open (clears resolution)
   archive                               Move closed/canceled tickets to archive directory
 
@@ -100,7 +102,7 @@ Content:
   add-note <id> <text>                  Append timestamped note (or pipe via stdin)
 
 View:
-  ls [options]                          List tickets [default: open + in_progress]
+  ls [options]                          List tickets [default: all statuses]
     --status X                          Filter: open|in_progress|closed
     --ready                             Actionable: no unresolved deps or open children
     --blocked                           Has unresolved deps or open children
@@ -118,6 +120,7 @@ View:
 
 Maintenance:
   validate                              Check all tickets for referential integrity
+  autofix                               Update tickets to be consistent with current behavior
 ```
 
 ## Things --help Won't Tell You
@@ -144,6 +147,14 @@ tq nest child1 child2 parent   # both children move under parent
 ### No assignee default
 
 `tq` does not auto-assign to the git user. Always pass `-a` explicitly when creating or assigning.
+
+### Closing or cancelling a parent
+
+Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) with the same resolution as the parent. Already-closed descendants are left alone. Each affected ID is printed on its own line in write order.
+
+### Checkbox glyphs in `tq ls`
+
+`[ ]` open, `[/]` in_progress, `[x]` closed-completed, `[~]` closed-cancelled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "closed".
 
 ### Listing shows tree context
 

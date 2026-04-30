@@ -140,13 +140,17 @@ def _load_all_tickets(
 
 
 # [AI]
-# Context: spexl change ls-display-format, requirement=list-ticket-line-format
-# Intent: match tk ls output -- checkbox for status, hide default priority/type
-_STATUS_CHECKBOX: dict[str, str] = {
-    "open": "[ ]",
-    "in_progress": "[/]",
-    "closed": "[x]",
-}
+# Context: cascade-close-cancel -- ticket-query requirement=list-ticket-line-format
+# Intent: distinguish canceled (`[~]`) from completed (`[x]`); both share status="closed"
+#   so the checkbox is keyed on (status, resolution) rather than status alone.
+def _checkbox(t: Ticket) -> str:
+    if t.status == "open":
+        return "[ ]"
+    if t.status == "in_progress":
+        return "[/]"
+    if t.status == "closed":
+        return "[~]" if t.resolution == "canceled" else "[x]"
+    return "[?]"
 
 
 def _format_ticket_line(t: Ticket) -> str:
@@ -156,8 +160,7 @@ def _format_ticket_line(t: Ticket) -> str:
     if t.type != "task":
         parts.append(f"[{t.type}]")
     tags = f" {''.join(parts)}" if parts else ""
-    checkbox = _STATUS_CHECKBOX.get(t.status, "[?]")
-    return f"{t.id}{tags} - {checkbox} {t.title}"
+    return f"{t.id}{tags} - {_checkbox(t)} {t.title}"
 
 
 def _format_ticket_line_with_deps(t: Ticket) -> str:
