@@ -53,7 +53,7 @@ class TestCommandHelp:
         result = run_tq("create", "--help")
         assert result.returncode == 0
         for flag in ["-d", "--description", "-t", "--type", "-p", "--priority",
-                     "-a", "--assignee", "--xref", "--parent", "--tag", "--dep"]:
+                     "-A", "--assignee", "--xref", "--parent", "--tag", "--dep"]:
             assert flag in result.stdout, f"Flag '{flag}' missing from create help"
 
     def test_ls_help(self) -> None:

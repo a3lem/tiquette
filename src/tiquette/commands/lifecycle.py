@@ -36,7 +36,10 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
         "-p", "--priority", default="2", choices=VALID_PRIORITIES,
         help="Priority 0-4, 0=highest",
     )
-    p_create.add_argument("-a", "--assignee", default=None, help="Assignee")
+    # [AI]
+    # Context: create-rename-assignee-short-flag -- ticket-lifecycle requirement=create-ticket
+    # Intent: -A short flag matches `tq ls -A`; -a previously held this slot
+    p_create.add_argument("-A", "--assignee", default=None, help="Assignee")
     p_create.add_argument("--xref", default=None, help="External reference")
     p_create.add_argument("--parent", default=None, help="Parent ticket ID")
     p_create.add_argument("--tag", action="append", default=None, help="Tag (repeat for multiple)")

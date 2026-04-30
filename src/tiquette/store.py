@@ -275,9 +275,29 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
 # ── Listing ─────────────────────────────────────────────────
 
 
-def list_ticket_ids(tickets_dir: Path) -> list[str]:
-    """Return all ticket IDs in the directory."""
-    return sorted(p.stem for p in tickets_dir.glob("*.md"))
+TicketSource = T.Literal["active", "archived", "all"]
+
+
+# [AI]
+# Context: ls-archived-flags -- ticket-query requirement=list-source-axis
+# Intent: enumerate either active, archived, or both ticket sets
+def list_ticket_ids(
+    tickets_dir: Path,
+    source: TicketSource = "active",
+) -> list[str]:
+    """Return ticket IDs in the directory.
+
+    `source="active"` lists top-level tickets only (default).
+    `source="archived"` lists tickets under `archive/`.
+    `source="all"` lists both, deduped (active wins on collision).
+    """
+    if source == "active":
+        return sorted(p.stem for p in tickets_dir.glob("*.md"))
+    if source == "archived":
+        return sorted(p.stem for p in (tickets_dir / "archive").glob("*.md"))
+    active = {p.stem for p in tickets_dir.glob("*.md")}
+    archived = {p.stem for p in (tickets_dir / "archive").glob("*.md")}
+    return sorted(active | archived)
 
 
 # ── ID resolution ──────────────────────────────────────────

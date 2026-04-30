@@ -66,10 +66,20 @@ class TestCreateArgs:
         result = run_tq("create", "Test", "-p", "-1")
         assert result.returncode != 0
 
-    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-assignee
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-assignee-short-flag
     def test_create_with_assignee(self) -> None:
-        result = run_tq("create", "Test", "-a", "Alice")
+        result = run_tq("create", "Test", "-A", "Alice")
         assert result.returncode == 0
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-assignee-long-flag
+    def test_create_with_assignee_long(self) -> None:
+        result = run_tq("create", "Test", "--assignee", "Alice")
+        assert result.returncode == 0
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=-a-is-no-longer-accepted-for---assignee
+    def test_create_lowercase_a_rejected(self) -> None:
+        result = run_tq("create", "Test", "-a", "Alice")
+        assert result.returncode != 0
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-external-reference
     def test_create_with_ref(self) -> None:
@@ -95,7 +105,7 @@ class TestCreateArgs:
     def test_create_with_all_flags(self) -> None:
         result = run_tq(
             "create", "Full ticket",
-            "-d", "desc", "-t", "bug", "-p", "1", "-a", "Alice",
+            "-d", "desc", "-t", "bug", "-p", "1", "-A", "Alice",
             "--xref", "GH-42", "--parent", "p-001",
             "--tag", "ui", "--tag", "api", "--dep", "d-001",
         )
@@ -220,7 +230,7 @@ class TestCreateBehavior:
     def test_create_with_assignee(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         tickets_dir = tmp_path / ".tickets"
-        result = run_tq("create", "Task", "-a", "John Doe", env={"TICKETS_DIR": str(tickets_dir)})
+        result = run_tq("create", "Task", "-A", "John Doe", env={"TICKETS_DIR": str(tickets_dir)})
         ticket_id = result.stdout.strip()
         content = _read_ticket_file(tickets_dir, ticket_id)
         assert "assignee: John Doe" in content

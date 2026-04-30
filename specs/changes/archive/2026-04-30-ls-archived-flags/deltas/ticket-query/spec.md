@@ -1,17 +1,85 @@
 # Ticket Query
 
+## ADDED Requirements
+
+### Requirement: List source axis
+The system SHALL provide a source-selection axis on `tq ls` that controls whether active tickets, archived tickets, or both are considered. The axis has three states: default (active only), `--archived` (archived only), and `--all` (active + archived).
+
+`--archived` and `--all` SHALL be mutually exclusive. They SHALL combine freely with status/resolution filters (`--status`, `--completed`, `--canceled`, `--ready`, `--blocked`) and with stackable filters (`--tag`, `--type`, `--assignee`).
+
+#### Scenario: --archived shows only archived tickets
+- Given active ticket "act-001" and archived ticket "arc-001" exist
+- When the user runs `tq ls --archived`
+- Then the output contains "arc-001"
+- And the output does not contain "act-001"
+
+#### Scenario: --all shows active and archived
+- Given active ticket "act-001" and archived ticket "arc-001" exist
+- When the user runs `tq ls --all`
+- Then the output contains "act-001"
+- And the output contains "arc-001"
+
+#### Scenario: -a is short for --all
+- Given active ticket "act-001" and archived ticket "arc-001" exist
+- When the user runs `tq ls -a`
+- Then the output contains "act-001"
+- And the output contains "arc-001"
+
+#### Scenario: --archived combines with --canceled
+- Given archived ticket "arc-001" has resolution canceled
+- And archived ticket "arc-002" has resolution completed
+- When the user runs `tq ls --archived --canceled`
+- Then the output contains "arc-001"
+- And the output does not contain "arc-002"
+
+#### Scenario: --archived combines with --completed
+- Given archived ticket "arc-001" has resolution completed
+- And archived ticket "arc-002" has resolution canceled
+- When the user runs `tq ls --archived --completed`
+- Then the output contains "arc-001"
+- And the output does not contain "arc-002"
+
+#### Scenario: --all combines with --completed
+- Given active "done-001" has resolution completed
+- And archived "done-002" has resolution completed
+- And active "done-003" has resolution canceled
+- When the user runs `tq ls --all --completed`
+- Then the output contains "done-001"
+- And the output contains "done-002"
+- And the output does not contain "done-003"
+
+#### Scenario: --archived combines with --tag
+- Given archived ticket "arc-001" has tag "ui"
+- And archived ticket "arc-002" has tag "backend"
+- When the user runs `tq ls --archived --tag ui`
+- Then the output contains "arc-001"
+- And the output does not contain "arc-002"
+
+#### Scenario: --archived with no archived tickets
+- Given no archived tickets exist
+- When the user runs `tq ls --archived`
+- Then the output is empty
+
+#### Scenario: --all and --archived mutually exclusive
+- When the user runs `tq ls --all --archived`
+- Then the command exits non-zero
+
 ## MODIFIED Requirements
 
 ### Requirement: List tickets
 
-The system SHALL list tickets matching filter criteria when `tq ls` is invoked. The default
-filter shows `open` and `in_progress` tickets, sorted by priority. The `--assignee` filter
-SHALL accept `-a` as a short alias. The `--tag` filter SHALL accept `-T` as a short alias.
+The system SHALL list tickets matching filter criteria when `tq ls` is invoked. With no source-selection flag, only active (non-archived) tickets are considered. With no status/resolution filter flags, all statuses within the selected source set are shown, sorted by priority. Source selection (`--archived`, `--all`) is governed by the "List source axis" requirement.
 
 #### Scenario: List all open tickets
 - Given tickets "list-0001" and "list-0002" exist (status open)
 - When the user runs `tq ls`
 - Then the output contains both ticket IDs
+
+#### Scenario: Default excludes archived
+- Given active ticket "act-001" and archived ticket "arc-001" exist
+- When the user runs `tq ls`
+- Then the output contains "act-001"
+- And the output does not contain "arc-001"
 
 #### Scenario: List with status filter
 - Given "list-0001" is open and "list-0002" is closed
@@ -71,19 +139,23 @@ SHALL accept `-a` as a short alias. The `--tag` filter SHALL accept `-T` as a sh
 - When the user runs `tq ls --blocked`
 - Then the output does not contain "block-001"
 
-#### Scenario: Completed filter
-- Given "done-001" is closed with resolution completed
-- And "done-002" is closed with resolution canceled
+#### Scenario: Completed filter (active only by default)
+- Given active "done-001" is closed with resolution completed
+- And active "done-002" is closed with resolution canceled
+- And archived "done-003" has resolution completed
 - When the user runs `tq ls --completed`
 - Then the output contains "done-001"
 - And the output does not contain "done-002"
+- And the output does not contain "done-003"
 
-#### Scenario: Canceled filter
-- Given "done-001" is closed with resolution completed
-- And "done-002" is closed with resolution canceled
+#### Scenario: Canceled filter (active only by default)
+- Given active "done-001" is closed with resolution completed
+- And active "done-002" is closed with resolution canceled
+- And archived "done-003" has resolution canceled
 - When the user runs `tq ls --canceled`
 - Then the output contains "done-002"
 - And the output does not contain "done-001"
+- And the output does not contain "done-003"
 
 #### Scenario: Limit
 - Given two closed tickets exist
@@ -96,27 +168,25 @@ SHALL accept `-a` as a short alias. The `--tag` filter SHALL accept `-T` as a sh
 - Then the output is valid JSONL
 - And each line has fields: id, status, deps, links, type, priority
 
-#### Scenario: Filter by assignee (long form)
+#### Scenario: Filter by assignee
 - Given "t-001" has assignee "Alice" and "t-002" has assignee "Bob"
 - When the user runs `tq ls --assignee Alice`
 - Then the output contains "t-001"
 - And the output does not contain "t-002"
 
-#### Scenario: Filter by assignee (short form)
+#### Scenario: -A is short for --assignee
 - Given "t-001" has assignee "Alice" and "t-002" has assignee "Bob"
-- When the user runs `tq ls -a Alice`
+- When the user runs `tq ls -A Alice`
 - Then the output contains "t-001"
 - And the output does not contain "t-002"
 
-#### Scenario: Filter by tag (long form)
+#### Scenario: -a is no longer short for --assignee
+- When the user runs `tq ls -a Alice`
+- Then `Alice` is not interpreted as an assignee filter
+
+#### Scenario: Filter by tag
 - Given "t-001" has tag "ui" and "t-002" has tag "backend"
 - When the user runs `tq ls --tag ui`
-- Then the output contains "t-001"
-- And the output does not contain "t-002"
-
-#### Scenario: Filter by tag (short form)
-- Given "t-001" has tag "ui" and "t-002" has tag "backend"
-- When the user runs `tq ls -T ui`
 - Then the output contains "t-001"
 - And the output does not contain "t-002"
 

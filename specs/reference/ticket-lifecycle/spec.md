@@ -35,10 +35,19 @@ The system SHALL create a ticket file in `.tickets/` when `tq create` is invoked
 - When the user runs `tq create "High priority" -p 0`
 - Then the created ticket has field `priority` with value `0`
 
-### Scenario: Create with assignee
+### Scenario: Create with assignee (short flag)
 - Given a clean tickets directory
-- When the user runs `tq create "Assigned ticket" -a "John Doe"`
+- When the user runs `tq create "Assigned ticket" -A "John Doe"`
 - Then the created ticket has field `assignee` with value `John Doe`
+
+### Scenario: Create with assignee (long flag)
+- Given a clean tickets directory
+- When the user runs `tq create "Assigned ticket" --assignee "John Doe"`
+- Then the created ticket has field `assignee` with value `John Doe`
+
+### Scenario: -a is no longer accepted for --assignee
+- When the user runs `tq create "X" -a "John Doe"`
+- Then the command exits non-zero
 
 ### Scenario: Create with external reference
 - Given a clean tickets directory
@@ -172,6 +181,7 @@ The system SHALL set a ticket's status to `closed` with resolution `completed` w
 - Given ticket "par-0001" has one open child "par-0002"
 - When the user runs `tq close par-0002`
 - Then the command exits 0
+- And stdout contains the ticket ID "par-0002"
 - And stdout contains a notification that "par-0001" has no remaining open children
 
 ## Requirement: Cancel command
@@ -204,3 +214,37 @@ The system SHALL reject invalid status values and non-existent ticket IDs with n
 - When the user runs `tq close nonexistent`
 - Then the command exits non-zero
 - And stderr contains "ticket 'nonexistent' not found"
+
+## Requirement: Transition output
+
+WHEN a transition command (`start`, `close`, `cancel`, `reopen`) succeeds, the system SHALL
+print the affected ticket ID to stdout.
+
+### Scenario: Start prints ticket ID
+- Given ticket "test-0001" exists with status `open`
+- When the user runs `tq start test-0001`
+- Then the command exits 0
+- And stdout contains "test-0001"
+
+### Scenario: Close prints ticket ID
+- Given ticket "test-0001" exists with status `open`
+- When the user runs `tq close test-0001`
+- Then the command exits 0
+- And stdout contains "test-0001"
+
+### Scenario: Cancel prints ticket ID
+- Given ticket "test-0001" exists with status `open`
+- When the user runs `tq cancel test-0001`
+- Then the command exits 0
+- And stdout contains "test-0001"
+
+### Scenario: Reopen prints ticket ID
+- Given ticket "test-0001" exists with status `closed`
+- When the user runs `tq reopen test-0001`
+- Then the command exits 0
+- And stdout contains "test-0001"
+
+### Scenario: Failed transition does not print ID
+- When the user runs `tq close nonexistent`
+- Then the command exits non-zero
+- And stdout is empty

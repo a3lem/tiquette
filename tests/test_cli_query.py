@@ -149,10 +149,31 @@ class TestLsArgs:
         result = run_tq("ls", "--assignee", "Alice")
         assert result.returncode == 0
 
-    # spec: ticket-query requirement=list-tickets scenario=filter-by-assignee-short-form
+    # spec: ticket-query requirement=list-tickets scenario=-a-is-short-for---assignee
     def test_ls_assignee_short_flag(self) -> None:
-        result = run_tq("ls", "-a", "Alice")
+        result = run_tq("ls", "-A", "Alice")
         assert result.returncode == 0
+
+    # spec: ticket-query requirement=list-tickets scenario=-a-is-no-longer-short-for---assignee
+    def test_ls_lowercase_a_no_longer_assignee(self) -> None:
+        # `-a` now means --all (boolean), so `-a Alice` should fail (Alice unparsed)
+        result = run_tq("ls", "-a", "Alice")
+        assert result.returncode != 0
+
+    # spec: ticket-query requirement=list-source-axis scenario=-a-shows-active-and-archived
+    def test_ls_all_short_flag(self) -> None:
+        result = run_tq("ls", "-a")
+        assert result.returncode == 0
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-shows-only-archived-tickets
+    def test_ls_archived_flag(self) -> None:
+        result = run_tq("ls", "--archived")
+        assert result.returncode == 0
+
+    # spec: ticket-query requirement=list-source-axis scenario=--all-and---archived-mutually-exclusive
+    def test_ls_all_and_archived_mutually_exclusive(self) -> None:
+        result = run_tq("ls", "--all", "--archived")
+        assert result.returncode != 0
 
     # spec: ticket-query requirement=list-tickets scenario=filter-by-tag-long-form
     def test_ls_tag_filter(self) -> None:
@@ -632,6 +653,170 @@ class TestLsBehavior:
         r = run_tq_env("ls", "--assignee", "Bob", env=_make_env(td))
         assert "hid-p" not in r.stdout
         assert "hid-c" not in r.stdout
+
+
+class TestLsArchivedAndAll:
+    """Behavioral tests for `ls` source axis: --archived, --all/-a.
+
+    # spec: ticket-query requirement=list-source-axis
+    """
+
+    @staticmethod
+    def _seed(tmp_path: Path) -> Path:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(Ticket(id="act-001", title="Active"), td)
+        write_ticket(
+            Ticket(id="arc-001", title="Archived completed",
+                   status="closed", resolution="completed",
+                   tags=["ui"]),
+            td / "archive",
+        )
+        write_ticket(
+            Ticket(id="arc-002", title="Archived canceled",
+                   status="closed", resolution="canceled",
+                   tags=["backend"]),
+            td / "archive",
+        )
+        return td
+
+    # spec: ticket-query requirement=list-tickets scenario=default-excludes-archived
+    def test_default_excludes_archived(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", env=_make_env(td))
+        assert "act-001" in r.stdout
+        assert "arc-001" not in r.stdout
+        assert "arc-002" not in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-shows-only-archived-tickets
+    def test_archived_shows_only_archived(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "--archived", env=_make_env(td))
+        assert "act-001" not in r.stdout
+        assert "arc-001" in r.stdout
+        assert "arc-002" in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--all-shows-active-and-archived
+    def test_all_shows_active_and_archived(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "--all", env=_make_env(td))
+        assert "act-001" in r.stdout
+        assert "arc-001" in r.stdout
+        assert "arc-002" in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=-a-shows-active-and-archived
+    def test_short_a_means_all(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "-a", env=_make_env(td))
+        assert "act-001" in r.stdout
+        assert "arc-001" in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-combines-with---canceled
+    def test_archived_combines_with_canceled(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "--archived", "--canceled", env=_make_env(td))
+        assert "arc-002" in r.stdout
+        assert "arc-001" not in r.stdout
+        assert "act-001" not in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-combines-with---completed
+    def test_archived_combines_with_completed(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "--archived", "--completed", env=_make_env(td))
+        assert "arc-001" in r.stdout
+        assert "arc-002" not in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--all-combines-with---completed
+    def test_all_combines_with_completed(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="done-001", title="Active completed",
+                   status="closed", resolution="completed"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-003", title="Active canceled",
+                   status="closed", resolution="canceled"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-002", title="Archived completed",
+                   status="closed", resolution="completed"),
+            td / "archive",
+        )
+        r = run_tq_env("ls", "--all", "--completed", env=_make_env(td))
+        assert "done-001" in r.stdout
+        assert "done-002" in r.stdout
+        assert "done-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-combines-with---tag
+    def test_archived_combines_with_tag(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("ls", "--archived", "--tag", "ui", env=_make_env(td))
+        assert "arc-001" in r.stdout
+        assert "arc-002" not in r.stdout
+
+    # spec: ticket-query requirement=list-source-axis scenario=--archived-with-no-archived-tickets
+    def test_archived_with_no_archived_tickets(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="act-001", title="Active"), td)
+        r = run_tq_env("ls", "--archived", env=_make_env(td))
+        assert r.returncode == 0
+        assert r.stdout.strip() == ""
+
+    # spec: ticket-query requirement=list-tickets scenario=completed-filter-active-only-by-default
+    def test_completed_active_only_by_default(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="done-001", title="Active completed",
+                   status="closed", resolution="completed"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-002", title="Active canceled",
+                   status="closed", resolution="canceled"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-003", title="Archived completed",
+                   status="closed", resolution="completed"),
+            td / "archive",
+        )
+        r = run_tq_env("ls", "--completed", env=_make_env(td))
+        assert "done-001" in r.stdout
+        assert "done-002" not in r.stdout
+        assert "done-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-tickets scenario=canceled-filter-active-only-by-default
+    def test_canceled_active_only_by_default(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="done-001", title="Active completed",
+                   status="closed", resolution="completed"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-002", title="Active canceled",
+                   status="closed", resolution="canceled"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="done-003", title="Archived canceled",
+                   status="closed", resolution="canceled"),
+            td / "archive",
+        )
+        r = run_tq_env("ls", "--canceled", env=_make_env(td))
+        assert "done-002" in r.stdout
+        assert "done-001" not in r.stdout
+        assert "done-003" not in r.stdout
 
 
 class TestLsLineFormat:

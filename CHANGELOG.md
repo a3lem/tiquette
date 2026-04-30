@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- added: `tq ls --archived` lists only archived tickets.
+- added: `tq ls --all` (short: `-a`) lists active and archived tickets together. Mirrors `ls -a`.
+- changed (BREAKING): `tq ls` short flag for `--assignee` is now `-A` (was `-a`). Use `-A "Alice"` or `--assignee "Alice"`.
+- changed (BREAKING): `tq create` short flag for `--assignee` is now `-A` (was `-a`), matching `tq ls`.
+
 ## v0.1.2 – 2026-04-28
 
 - changed: ticket ID prefix is now an abbreviation (max 4 chars) of the project directory name. Multi-token names use first letters of each token; single-token names use the first 4 characters; short multi-token names fill from the trailing characters of the last token.

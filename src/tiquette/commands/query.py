@@ -11,6 +11,7 @@ from pathlib import Path
 from tiquette.store import (
     Ticket,
     TicketNotFoundError,
+    TicketSource,
     find_tickets_dir,
     list_ticket_ids,
     read_ticket,
@@ -73,10 +74,25 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
 
     p_ls.add_argument("--completed", action="store_true", help="Resolution = completed")
     p_ls.add_argument("--canceled", action="store_true", help="Resolution = canceled")
+
     # [AI]
-    # Context: fix-cli-output-gaps -- ticket-query requirement=list-tickets
-    # Intent: short aliases match create (-a for assignee); -T avoids conflict with future -t/--type
-    p_ls.add_argument("-a", "--assignee", help="Filter by assignee")
+    # Context: ls-archived-flags -- ticket-query requirement=list-source-axis
+    # Intent: source axis (active|archived|all); -a mirrors `ls -a`
+    source_group = p_ls.add_mutually_exclusive_group()
+    source_group.add_argument(
+        "-a", "--all", action="store_true",
+        dest="all_sources",
+        help="Include archived tickets",
+    )
+    source_group.add_argument(
+        "--archived", action="store_true",
+        help="Show only archived tickets",
+    )
+
+    # [AI]
+    # Context: ls-archived-flags -- ticket-query requirement=list-tickets
+    # Intent: -A is short for --assignee (was -a, now freed for --all); -T avoids -t conflict
+    p_ls.add_argument("-A", "--assignee", help="Filter by assignee")
     p_ls.add_argument("-T", "--tag", help="Filter by tag")
     p_ls.add_argument("--type", help="Filter by type")
     p_ls.add_argument(
@@ -103,11 +119,23 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
 # ── Helpers ──────────────────────────────────────────────────
 
 
-def _load_all_tickets(tickets_dir: Path) -> dict[str, Ticket]:
-    """Load all tickets into a dict keyed by ID."""
+def _load_all_tickets(
+    tickets_dir: Path,
+    source: TicketSource = "active",
+) -> dict[str, Ticket]:
+    """Load tickets from the requested source(s) into a dict keyed by ID.
+
+    `source="all"` includes archived tickets; on ID collision active wins.
+    """
     result: dict[str, Ticket] = {}
-    for tid in list_ticket_ids(tickets_dir):
-        result[tid] = read_ticket(tid, tickets_dir)
+    if source in ("archived", "all"):
+        archive_dir = tickets_dir / "archive"
+        if archive_dir.is_dir():
+            for tid in list_ticket_ids(tickets_dir, source="archived"):
+                result[tid] = read_ticket(tid, archive_dir)
+    if source in ("active", "all"):
+        for tid in list_ticket_ids(tickets_dir, source="active"):
+            result[tid] = read_ticket(tid, tickets_dir)
     return result
 
 
@@ -396,7 +424,17 @@ def _handle_deps(args: argparse.Namespace) -> None:
 # Tree rendering groups children under parents with box-drawing chars.
 def _handle_ls(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    all_tickets = _load_all_tickets(tickets_dir)
+    # [AI]
+    # Context: ls-archived-flags -- ticket-query requirement=list-source-axis
+    # Intent: source axis is independent of status/resolution filters
+    source: TicketSource
+    if args.archived:
+        source = "archived"
+    elif args.all_sources:
+        source = "all"
+    else:
+        source = "active"
+    all_tickets = _load_all_tickets(tickets_dir, source=source)
 
     if not all_tickets:
         return
