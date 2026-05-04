@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.1.4
+  version: 0.1.5
   note: Generated. Do not modify
 ---
 
@@ -133,6 +133,10 @@ To change a ticket's title, edit `.tickets/<id>.md` directly. Use `tq path <id>`
 **Blocked** = open/in_progress AND (has unresolved deps OR has open children).
 
 Parents are implicitly blocked by open children, even without explicit deps. This is transitive – grandparents are blocked too.
+
+### Any ticket type can have children
+
+Parenting is not restricted by type. A `task` can have subtasks, a `feature` can have child bugs, etc. By convention `epic` groups `feature`s, but that's a convention, not a constraint -- reach for `epic` only when you actually want an epic-sized container, not just because a ticket has children.
 
 ### Nest argument order
 

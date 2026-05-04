@@ -1,7 +1,7 @@
 default:
     @just --list
 
-sync:
+shablon:
     shablon generate
 
 test:
