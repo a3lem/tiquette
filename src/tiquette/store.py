@@ -12,14 +12,21 @@ TICKETS_DIR_NAME = ".tickets"
 # -- Frontmatter field order (controls serialization order) --
 _FIELD_ORDER = [
     "id", "status", "type", "priority", "assignee",
-    "deps", "links", "parent", "tags", "xref", "resolution", "created",
+    "deps", "links", "parent", "tags", "xref", "created",
 ]
 
 # -- List-typed fields (serialized as YAML flow style) --
 _LIST_FIELDS = {"deps", "links", "tags"}
 
 # -- Nullable scalar fields (serialized as "null" when None) --
-_NULLABLE_FIELDS = {"assignee", "parent", "xref", "resolution"}
+_NULLABLE_FIELDS = {"assignee", "parent", "xref"}
+
+# -- Terminal statuses (no further lifecycle transitions expected) --
+TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "canceled"})
+
+
+def is_terminal(t: "Ticket") -> bool:
+    return t.status in TERMINAL_STATUSES
 
 
 # ── Exceptions ──────────────────────────────────────────────
@@ -59,7 +66,6 @@ class Ticket:
     parent: str | None = None
     tags: list[str] = dataclasses.field(default_factory=list)
     xref: str | None = None
-    resolution: str | None = None
     created: str = dataclasses.field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )

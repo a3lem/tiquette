@@ -59,8 +59,8 @@ class TestCommandHelp:
     def test_ls_help(self) -> None:
         result = run_tq("ls", "--help")
         assert result.returncode == 0
-        for flag in ["--status", "--ready", "--blocked", "--completed",
-                     "--canceled", "--assignee", "--tag", "--type",
+        for flag in ["--status", "--ready", "--blocked",
+                     "--assignee", "--tag", "--type",
                      "--sort", "--limit", "--jsonl"]:
             assert flag in result.stdout, f"Flag '{flag}' missing from ls help"
 

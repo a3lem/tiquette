@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.1.3
+  version: 0.1.4
   note: Generated. Do not modify
 ---
 
@@ -65,18 +65,18 @@ Lifecycle:
     -d, --description TEXT              Body content (markdown below frontmatter)
     -t, --type TYPE                     bug|feature|task|epic|chore [default: task]
     -p, --priority N                    0-4, 0=highest [default: 2]
-    -a, --assignee NAME                 Assignee [default: null]
+    -A, --assignee NAME                 Assignee [default: null]
     --xref REF                          External reference (e.g., gh-123, JIRA-456)
     --parent ID                         Parent ticket ID
     --tag TAG                           Tag (repeat for multiple)
     --dep ID                            Blocker ID (repeat for multiple)
   start <id>                            Set status to in_progress
-  close <id> [-f]                       Set status to closed (resolution: completed)
+  close <id> [-f]                       Set status to completed
                                         -f/--force cascades through open descendants
-  cancel <id> [-f]                      Set status to closed (resolution: canceled)
+  cancel <id> [-f]                      Set status to canceled
                                         -f/--force cascades through open descendants
-  reopen <id>                           Set status to open (clears resolution)
-  archive                               Move closed/canceled tickets to archive directory
+  reopen <id>                           Set status to open
+  archive                               Move completed and canceled tickets to archive directory
 
 Relationships:
   dep <id> <dep-id> [dep-id...]         Add dependency (id is blocked by dep-ids)
@@ -103,11 +103,9 @@ Content:
 
 View:
   ls [options]                          List tickets [default: all statuses]
-    --status X                          Filter: open|in_progress|closed
+    -s, --status X                      Filter: open|in_progress|completed|canceled
     --ready                             Actionable: no unresolved deps or open children
     --blocked                           Has unresolved deps or open children
-    --completed                         Resolution = completed (implies --status closed)
-    --canceled                          Resolution = canceled (implies --status closed)
     --assignee NAME                     Filter by assignee
     --tag TAG                           Filter by tag
     --type TYPE                         Filter by type

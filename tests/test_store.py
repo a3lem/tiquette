@@ -202,7 +202,6 @@ class TestTicketDataclass:
         assert t.parent is None
         assert t.tags == []
         assert t.xref is None
-        assert t.resolution is None
         assert t.created is not None
         # created should be valid ISO 8601
         datetime.fromisoformat(t.created)
@@ -222,7 +221,6 @@ class TestTicketDataclass:
             parent="parent-001",
             tags=["ui", "backend"],
             xref="JIRA-123",
-            resolution=None,
             created="2026-01-01T00:00:00",
             description="Some details",
         )
@@ -343,7 +341,7 @@ class TestWriteTicket:
         content = (tickets_dir / "proj-0001.md").read_text()
         # Nullable fields must be absent when null, not written as "null"
         assert "assignee" not in content
-        assert "resolution" not in content
+        assert "resolution" not in content  # resolution is removed from the schema entirely
         assert "parent" not in content
         assert "xref" not in content
 
@@ -356,7 +354,7 @@ class TestWriteTicket:
         t = Ticket(
             id="proj-0001", title="Test",
             assignee="Alice", parent="parent-001",
-            xref="gh-42", resolution="completed",
+            xref="gh-42",
         )
         write_ticket(t, tickets_dir)
 
@@ -364,7 +362,19 @@ class TestWriteTicket:
         assert "assignee: Alice" in content
         assert "parent: parent-001" in content
         assert "xref: gh-42" in content
-        assert "resolution: completed" in content
+        assert "resolution" not in content  # resolution is not part of the schema
+
+    # spec: ticket-store requirement=ticket-file-format scenario=resolution-field-never-written
+    def test_resolution_never_written(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        for status in ("open", "in_progress", "completed", "canceled"):
+            t = Ticket(id=f"proj-{status[:4]}", title="T", status=status)
+            write_ticket(t, tickets_dir)
+            content = (tickets_dir / f"proj-{status[:4]}.md").read_text()
+            assert "resolution" not in content, f"resolution appeared for status={status}"
 
 
 class TestReadTicket:
@@ -489,7 +499,6 @@ class TestNullableFieldsRoundtrip:
         assert loaded.assignee is None
         assert loaded.parent is None
         assert loaded.xref is None
-        assert loaded.resolution is None
 
     def test_nonexistent_id_error(self, tmp_path: Path) -> None:
         from tiquette.store import Ticket, TicketNotFoundError, resolve_id, write_ticket

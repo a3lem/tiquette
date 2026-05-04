@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.1.4 – 2026-04-30
+
+- changed (BREAKING): `closed` status no longer exists. The two terminal statuses are now `completed` (via `tq close`) and `canceled` (via `tq cancel`).
+- changed (BREAKING): `tq close` sets `status: completed` directly; `tq cancel` sets `status: canceled`. The `resolution` field is removed entirely.
+- changed (BREAKING): `tq ls --completed` and `tq ls --canceled` flags removed. Use `tq ls -s completed` or `tq ls -s canceled` (`-s` is short for `--status`).
+- added: `tq autofix` migrates legacy `closed` tickets: `closed+resolution:canceled` → `canceled`, all other `closed` → `completed`. Strips stray `resolution` fields from non-closed tickets.
+
 ## v0.1.3 – 2026-04-30
 
 - changed (BREAKING): `tq cancel` now rejects a ticket with open descendants (parity with `tq close`). Pass `-f` / `--force` to cascade-cancel the whole subtree.

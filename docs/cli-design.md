@@ -10,10 +10,10 @@ Usage: tq <command> [args]
 Lifecycle:
   create [title]                        Create ticket, prints ID
   start <id>                            Set status to in_progress
-  close <id>                            Close as completed
-  cancel <id>                           Close as canceled
-  reopen <id>                           Reopen (clears resolution)
-  archive                               Move closed tickets to archive
+  close <id>                            Set status to completed
+  cancel <id>                           Set status to canceled
+  reopen <id>                           Set status to open
+  archive                               Move completed and canceled tickets to archive
 
 Relationships:
   dep <id> <dep-id>...                  Add blocking dependency
@@ -61,7 +61,6 @@ links: []
 parent:
 tags: []
 xref:
-resolution:
 created: 2026-03-30T12:00:00Z
 ---
 # Ticket title
@@ -81,8 +80,7 @@ Body content goes here.
 - **Title** is the `# heading`, not a YAML field
 - **Description** is the `## Description` section (set by `-d`/`--description` or `describe` command)
 - **Notes** are append-only timestamped lines in the `## Notes` section
-- **Status** values: `open`, `in_progress`, `closed`
-- **Resolution** (only when status=closed): `completed`, `canceled`
+- **Status** values: `open`, `in_progress`, `completed`, `canceled`
 - **ID format**: directory-name prefix + random suffix (e.g., `proj-a1b2`)
 - **Partial ID matching**: `tq show a1b` matches `proj-a1b2`
 

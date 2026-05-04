@@ -13,6 +13,7 @@ from tiquette.store import (
     TicketNotFoundError,
     TicketSource,
     find_tickets_dir,
+    is_terminal,
     list_ticket_ids,
     read_ticket,
     resolve_id,
@@ -22,7 +23,7 @@ from tiquette.store import (
 # [AI] Query commands: show, info, path, deps, ls, tags, archive.
 # ls has complex filtering with validation and mutual exclusion.
 
-VALID_STATUSES = ("open", "in_progress", "closed")
+VALID_STATUSES = ("open", "in_progress", "completed", "canceled")
 VALID_SORTS = ("priority", "mtime")
 
 
@@ -64,16 +65,13 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # [AI] ls: many optional filters, mutual exclusion for --ready/--blocked
     p_ls = subparsers.add_parser("ls", help="List tickets")
     p_ls.add_argument(
-        "--status", choices=VALID_STATUSES,
-        help="Filter by status (open|in_progress|closed)",
+        "-s", "--status", choices=VALID_STATUSES,
+        help="Filter by status (open|in_progress|completed|canceled)",
     )
 
     ready_group = p_ls.add_mutually_exclusive_group()
     ready_group.add_argument("--ready", action="store_true", help="Actionable tickets")
     ready_group.add_argument("--blocked", action="store_true", help="Blocked tickets")
-
-    p_ls.add_argument("--completed", action="store_true", help="Resolution = completed")
-    p_ls.add_argument("--canceled", action="store_true", help="Resolution = canceled")
 
     # [AI]
     # Context: ls-archived-flags -- ticket-query requirement=list-source-axis
@@ -112,7 +110,7 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_links.set_defaults(func=_handle_links)
 
     # archive (no args)
-    p_archive = subparsers.add_parser("archive", help="Move closed tickets to archive")
+    p_archive = subparsers.add_parser("archive", help="Move completed and canceled tickets to archive")
     p_archive.set_defaults(func=_handle_archive)
 
 
@@ -140,17 +138,20 @@ def _load_all_tickets(
 
 
 # [AI]
-# Context: cascade-close-cancel -- ticket-query requirement=list-ticket-line-format
-# Intent: distinguish canceled (`[~]`) from completed (`[x]`); both share status="closed"
-#   so the checkbox is keyed on (status, resolution) rather than status alone.
+# Context: split-closed-status -- ticket-query requirement=list-ticket-line-format
+# Intent: glyph keyed on status alone; completed=[x], canceled=[~]
 def _checkbox(t: Ticket) -> str:
-    if t.status == "open":
-        return "[ ]"
-    if t.status == "in_progress":
-        return "[/]"
-    if t.status == "closed":
-        return "[~]" if t.resolution == "canceled" else "[x]"
-    return "[?]"
+    match t.status:
+        case "open":
+            return "[ ]"
+        case "in_progress":
+            return "[/]"
+        case "completed":
+            return "[x]"
+        case "canceled":
+            return "[~]"
+        case _:
+            return "[?]"
 
 
 def _format_ticket_line(t: Ticket) -> str:
@@ -172,19 +173,17 @@ def _format_ticket_line_with_deps(t: Ticket) -> str:
     return line
 
 
-# [AI] Determine if a ticket is "blocked": has open deps or open children.
+# [AI] Determine if a ticket is "blocked": has non-terminal deps or non-terminal children.
 def _is_blocked(
     ticket: Ticket,
     all_tickets: dict[str, Ticket],
 ) -> bool:
-    # Check open dependencies
     for dep_id in ticket.deps:
         dep = all_tickets.get(dep_id)
-        if dep and dep.status != "closed":
+        if dep and not is_terminal(dep):
             return True
-    # Check open children
     for t in all_tickets.values():
-        if t.parent == ticket.id and t.status != "closed":
+        if t.parent == ticket.id and not is_terminal(t):
             return True
     return False
 
@@ -230,7 +229,6 @@ def _handle_show(args: argparse.Namespace) -> None:
             "parent": ticket.parent,
             "tags": ticket.tags,
             "xref": ticket.xref,
-            "resolution": ticket.resolution,
             "created": ticket.created,
             "body": body,
         }
@@ -244,10 +242,10 @@ def _handle_show(args: argparse.Namespace) -> None:
     # Load all tickets for relationship sections
     all_tickets = _load_all_tickets(tickets_dir)
 
-    # Blockers: deps that are still open
+    # Blockers: deps that are not yet in a terminal state
     open_deps = [
         dep_id for dep_id in ticket.deps
-        if dep_id in all_tickets and all_tickets[dep_id].status != "closed"
+        if dep_id in all_tickets and not is_terminal(all_tickets[dep_id])
     ]
     if open_deps:
         print("## Blockers\n")
@@ -314,7 +312,6 @@ def _handle_info(args: argparse.Namespace) -> None:
             "parent": ticket.parent,
             "tags": ticket.tags,
             "xref": ticket.xref,
-            "resolution": ticket.resolution,
             "created": ticket.created,
         }
         print(json.dumps(data, indent=2))
@@ -332,7 +329,6 @@ def _handle_info(args: argparse.Namespace) -> None:
     print(f"parent: {ticket.parent}")
     print(f"tags: {ticket.tags}")
     print(f"xref: {ticket.xref}")
-    print(f"resolution: {ticket.resolution}")
     print(f"created: {ticket.created}")
 
 
@@ -445,31 +441,22 @@ def _handle_ls(args: argparse.Namespace) -> None:
     # -- Filtering --
     filtered: list[Ticket] = []
 
-    if args.completed:
-        filtered = [t for t in all_tickets.values()
-                     if t.status == "closed" and t.resolution == "completed"]
-    elif args.canceled:
-        filtered = [t for t in all_tickets.values()
-                     if t.status == "closed" and t.resolution == "canceled"]
-    elif args.ready:
+    if args.ready:
         for t in all_tickets.values():
-            if t.status == "closed":
+            if is_terminal(t):
                 continue
             if _is_blocked(t, all_tickets):
                 continue
             filtered.append(t)
     elif args.blocked:
         for t in all_tickets.values():
-            if t.status == "closed":
+            if is_terminal(t):
                 continue
             if _is_blocked(t, all_tickets):
                 filtered.append(t)
     elif args.status:
         filtered = [t for t in all_tickets.values() if t.status == args.status]
     else:
-        # [AI]
-        # Context: user-reported bug -- default ls hid closed tickets
-        # Intent: include all statuses by default; users can filter via --status
         filtered = list(all_tickets.values())
 
     # Additional filters (stackable)
@@ -625,14 +612,14 @@ def _handle_ls(args: argparse.Namespace) -> None:
 # ── tags ─────────────────────────────────────────────────────
 
 
-# [AI] List all tags with counts, sorted descending. Excludes closed tickets.
+# [AI] List all tags with counts, sorted descending. Excludes terminal tickets.
 def _handle_tags(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
 
     tag_counts: Counter[str] = Counter()
     for t in all_tickets.values():
-        if t.status == "closed":
+        if is_terminal(t):
             continue
         for tag in t.tags:
             tag_counts[tag] += 1
@@ -679,21 +666,20 @@ def _find_referrers(
 
 
 # [AI]
-# Context: archive command with reference-safety check
-# Intent: refuse to archive closed tickets still referenced by non-archived tickets
-# Logic: iteratively shrink the archivable set -- removing a candidate makes it a
-#   "remaining" ticket whose references block other candidates
+# Context: split-closed-status -- archive command with reference-safety check
+# Intent: refuse to archive terminal (completed/canceled) tickets still referenced
+#   by non-archived tickets. Logic: iteratively shrink the archivable set.
 def _handle_archive(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
 
-    closed_ids = {t.id for t in all_tickets.values() if t.status == "closed"}
+    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t)}
 
-    if not closed_ids:
-        print("No closed tickets to archive")
+    if not terminal_ids:
+        print("No completed or canceled tickets to archive")
         return
 
-    archivable = set(closed_ids)
+    archivable = set(terminal_ids)
     changed = True
     while changed:
         changed = False
@@ -703,14 +689,14 @@ def _handle_archive(args: argparse.Namespace) -> None:
                 archivable.discard(tid)
                 changed = True
 
-    skipped = closed_ids - archivable
+    skipped = terminal_ids - archivable
     for tid in sorted(skipped):
         remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
         refs = _find_referrers(tid, remaining)
         sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(refs)}\n")
 
     if not archivable:
-        print("No closed tickets eligible for archiving")
+        print("No completed or canceled tickets eligible for archiving")
         return
 
     archive_dir = tickets_dir / "archive"

@@ -1,12 +1,11 @@
 ---
 id: tiqt-433c
-status: closed
+status: completed
 type: feature
 priority: 2
 deps: []
 links: []
 tags: [spexl]
-resolution: completed
 created: 2026-04-29T12:48:50.906383+00:00
 ---
 # Apply spexl change: create-rename-assignee-short-flag

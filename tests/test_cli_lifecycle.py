@@ -309,13 +309,12 @@ def _make_ticket(
     ticket_id: str,
     title: str = "Test ticket",
     status: str = "open",
-    resolution: str | None = None,
     parent: str | None = None,
 ) -> "Ticket":
     from tiquette.store import Ticket
     return Ticket(
         id=ticket_id, title=title, status=status,
-        resolution=resolution, parent=parent,
+        parent=parent,
     )
 
 
@@ -341,8 +340,9 @@ class TestStatusTransitionBehavior:
         result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         t = read_ticket("test-0001", tickets_dir)
-        assert t.status == "closed"
-        assert t.resolution == "completed"
+        assert t.status == "completed"
+        content = (tickets_dir / "test-0001.md").read_text()
+        assert "resolution" not in content
 
     # spec: ticket-lifecycle requirement=close-command scenario=close-rejects-parent-with-open-children
     def test_close_rejects_parent_with_open_children(self, tmp_path: Path) -> None:
@@ -357,23 +357,23 @@ class TestStatusTransitionBehavior:
         assert "test-0002" in result.stderr
         assert read_ticket("test-0001", tickets_dir).status == "open"
 
-    # spec: ticket-lifecycle requirement=close-command scenario=close-succeeds-when-all-children-closed
+    # spec: ticket-lifecycle requirement=close-command scenario=close-succeeds-when-all-children-are-terminal
     def test_close_succeeds_when_all_children_closed(self, tmp_path: Path) -> None:
         from tiquette.store import write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="closed", resolution="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
         result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
 
-    # spec: ticket-lifecycle requirement=close-command scenario=close-rejects-grandparent-with-open-grandchild
+    # spec: ticket-lifecycle requirement=close-command scenario=close-rejects-grandparent-with-non-terminal-grandchild
     def test_close_rejects_grandparent_with_open_grandchild(self, tmp_path: Path) -> None:
         from tiquette.store import write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="closed", resolution="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="canceled", parent="test-0001"), tickets_dir)
         write_ticket(_make_ticket("test-0003", parent="test-0002"), tickets_dir)
         result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode != 0
@@ -410,8 +410,9 @@ class TestStatusTransitionBehavior:
         result = run_tq("cancel", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         t = read_ticket("test-0001", tickets_dir)
-        assert t.status == "closed"
-        assert t.resolution == "canceled"
+        assert t.status == "canceled"
+        content = (tickets_dir / "test-0001.md").read_text()
+        assert "resolution" not in content
 
     # spec: ticket-lifecycle requirement=cancel-command scenario=cancel-rejects-parent-with-open-children
     def test_cancel_rejects_parent_with_open_children(self, tmp_path: Path) -> None:
@@ -426,18 +427,18 @@ class TestStatusTransitionBehavior:
         assert "test-0002" in result.stderr
         assert read_ticket("test-0001", tickets_dir).status == "open"
 
-    # spec: ticket-lifecycle requirement=cancel-command scenario=cancel-succeeds-when-all-descendants-are-closed
+    # spec: ticket-lifecycle requirement=cancel-command scenario=cancel-succeeds-when-all-descendants-are-terminal
     def test_cancel_succeeds_when_all_descendants_closed(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="closed", resolution="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
         result = run_tq("cancel", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
-        assert read_ticket("test-0001", tickets_dir).resolution == "canceled"
+        assert read_ticket("test-0001", tickets_dir).status == "canceled"
 
-    # spec: ticket-lifecycle requirement=cancel-command scenario=force-cancel-cascades-to-open-descendants
+    # spec: ticket-lifecycle requirement=cancel-command scenario=force-cancel-cascades-to-non-terminal-descendants
     def test_force_cancel_cascades(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
@@ -448,23 +449,21 @@ class TestStatusTransitionBehavior:
         result = run_tq("cancel", "-f", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         for tid in ("test-0001", "test-0002", "test-0003"):
-            t = read_ticket(tid, tickets_dir)
-            assert t.status == "closed", tid
-            assert t.resolution == "canceled", tid
+            assert read_ticket(tid, tickets_dir).status == "canceled", tid
 
-    # spec: ticket-lifecycle requirement=cancel-command scenario=force-cancel-leaves-already-closed-descendants-untouched
+    # spec: ticket-lifecycle requirement=cancel-command scenario=force-cancel-leaves-already-terminal-descendants-untouched
     def test_force_cancel_skips_closed_descendants(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="closed", resolution="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
         result = run_tq("cancel", "--force", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
-        assert read_ticket("test-0002", tickets_dir).resolution == "completed"
-        assert read_ticket("test-0001", tickets_dir).resolution == "canceled"
+        assert read_ticket("test-0002", tickets_dir).status == "completed"
+        assert read_ticket("test-0001", tickets_dir).status == "canceled"
 
-    # spec: ticket-lifecycle requirement=close-command scenario=force-close-cascades-to-open-descendants
+    # spec: ticket-lifecycle requirement=close-command scenario=force-close-cascades-to-non-terminal-descendants
     def test_force_close_cascades(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
@@ -475,33 +474,41 @@ class TestStatusTransitionBehavior:
         result = run_tq("close", "-f", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         for tid in ("test-0001", "test-0002", "test-0003"):
-            t = read_ticket(tid, tickets_dir)
-            assert t.status == "closed", tid
-            assert t.resolution == "completed", tid
+            assert read_ticket(tid, tickets_dir).status == "completed", tid
 
-    # spec: ticket-lifecycle requirement=close-command scenario=force-close-leaves-already-closed-descendants-untouched
+    # spec: ticket-lifecycle requirement=close-command scenario=force-close-leaves-already-terminal-descendants-untouched
     def test_force_close_skips_closed_descendants(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="closed", resolution="canceled", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="canceled", parent="test-0001"), tickets_dir)
         result = run_tq("close", "--force", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
-        assert read_ticket("test-0002", tickets_dir).resolution == "canceled"
-        assert read_ticket("test-0001", tickets_dir).resolution == "completed"
+        assert read_ticket("test-0002", tickets_dir).status == "canceled"
+        assert read_ticket("test-0001", tickets_dir).status == "completed"
 
-    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-sets-open-and-clears-resolution
-    def test_reopen_sets_open_and_clears_resolution(self, tmp_path: Path) -> None:
+    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-completed
+    def test_reopen_sets_open_from_completed(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        write_ticket(_make_ticket("test-0001", status="closed", resolution="completed"), tickets_dir)
+        write_ticket(_make_ticket("test-0001", status="completed"), tickets_dir)
         result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         t = read_ticket("test-0001", tickets_dir)
         assert t.status == "open"
-        assert t.resolution is None
+        assert "resolution" not in (tickets_dir / "test-0001.md").read_text()
+
+    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-canceled
+    def test_reopen_sets_open_from_canceled(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket, write_ticket
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(_make_ticket("test-0001", status="canceled"), tickets_dir)
+        result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        assert read_ticket("test-0001", tickets_dir).status == "open"
 
     # spec: ticket-lifecycle requirement=invalid-operations scenario=nonexistent-ticket
     def test_nonexistent_ticket(self, tmp_path: Path) -> None:
@@ -550,7 +557,7 @@ class TestTransitionOutput:
         from tiquette.store import write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        write_ticket(_make_ticket("test-0001", status="closed", resolution="completed"), tickets_dir)
+        write_ticket(_make_ticket("test-0001", status="completed"), tickets_dir)
         result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         assert "test-0001" in result.stdout

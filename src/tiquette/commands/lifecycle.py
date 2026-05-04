@@ -11,6 +11,7 @@ from tiquette.store import (
     TicketsNotFoundError,
     find_tickets_dir,
     generate_id,
+    is_terminal,
     read_ticket,
     write_ticket,
 )
@@ -52,8 +53,8 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     #   start/reopen stay flagless.
     for name, helptext in [
         ("start", "Set status to in_progress"),
-        ("close", "Set status to closed (completed)"),
-        ("cancel", "Set status to closed (canceled)"),
+        ("close", "Set status to completed"),
+        ("cancel", "Set status to canceled"),
         ("reopen", "Set status to open"),
     ]:
         p = subparsers.add_parser(name, help=helptext)
@@ -120,7 +121,7 @@ def _find_open_descendants(ticket_id: str, tickets_dir: Path) -> list[str]:
 
     def _walk(parent_id: str) -> None:
         for child in children_of.get(parent_id, []):
-            if child.status != "closed":
+            if not is_terminal(child):
                 open_descendants.append(child.id)
             _walk(child.id)
 
@@ -141,7 +142,7 @@ def _check_last_open_child(ticket: Ticket, tickets_dir: Path) -> None:
         sibling = read_ticket(f.stem, tickets_dir)
         if sibling.id == ticket.id:
             continue
-        if sibling.parent == ticket.parent and sibling.status != "closed":
+        if sibling.parent == ticket.parent and not is_terminal(sibling):
             return
 
     sys.stdout.write(f"note: {ticket.parent} has no remaining open children\n")
@@ -166,11 +167,11 @@ def _handle_status(args: argparse.Namespace) -> None:
         ticket.status = "in_progress"
     elif command in ("close", "cancel"):
         # [AI]
-        # Context: cascade-close-cancel -- ticket-lifecycle requirements=close-command,cancel-command
-        # Intent: shared descendant rejection + optional force-cascade. Resolution
-        #   ("completed" vs "canceled") is the only behavioural difference between
-        #   the two commands once cascade is unified.
-        resolution = "completed" if command == "close" else "canceled"
+        # Context: split-closed-status -- ticket-lifecycle requirements=close-command,cancel-command
+        # Intent: shared descendant rejection + optional force-cascade. The terminal
+        #   status ("completed" vs "canceled") is set directly on each ticket; no
+        #   resolution field is written.
+        terminal_status = "completed" if command == "close" else "canceled"
         open_desc = _find_open_descendants(ticket.id, tickets_dir)
         if open_desc and not args.force:
             desc_list = ", ".join(open_desc)
@@ -182,12 +183,10 @@ def _handle_status(args: argparse.Namespace) -> None:
         # exactly what landed on disk if a later write fails.
         for desc_id in open_desc:
             desc = read_ticket(desc_id, tickets_dir)
-            desc.status = "closed"
-            desc.resolution = resolution
+            desc.status = terminal_status
             write_ticket(desc, tickets_dir)
             sys.stdout.write(desc.id + "\n")
-        ticket.status = "closed"
-        ticket.resolution = resolution
+        ticket.status = terminal_status
         write_ticket(ticket, tickets_dir)
         sys.stdout.write(ticket.id + "\n")
         if command == "close":
@@ -196,7 +195,6 @@ def _handle_status(args: argparse.Namespace) -> None:
 
     if command == "reopen":
         ticket.status = "open"
-        ticket.resolution = None
 
     write_ticket(ticket, tickets_dir)
     # [AI]

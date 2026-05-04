@@ -128,6 +128,59 @@ class TestAutofix:
 
         assert "- Renamed 4 tickets to current ID prefix" in r.stdout
 
+    # spec: ticket-autofix requirement=migrate-legacy-closed-status
+    def test_migrate_closed_with_no_resolution_becomes_completed(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "proj")
+        path = td / "proj-aaaa.md"
+        path.write_text("---\nid: proj-aaaa\nstatus: closed\ntitle: Legacy\n---\n")
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "Migrated 1 ticket from closed status" in r.stdout
+        content = path.read_text()
+        assert "status: completed" in content
+        assert "status: closed" not in content
+
+    def test_migrate_closed_resolution_canceled_becomes_canceled(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "proj")
+        path = td / "proj-bbbb.md"
+        path.write_text("---\nid: proj-bbbb\nstatus: closed\nresolution: canceled\ntitle: Rejected\n---\n")
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "Migrated 1 ticket from closed status" in r.stdout
+        content = path.read_text()
+        assert "status: canceled" in content
+        assert "status: closed" not in content
+        assert "resolution:" not in content
+
+    def test_migrate_closed_resolution_completed_becomes_completed(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "proj")
+        path = td / "proj-cccc.md"
+        path.write_text("---\nid: proj-cccc\nstatus: closed\nresolution: completed\ntitle: Done\n---\n")
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        content = path.read_text()
+        assert "status: completed" in content
+        assert "resolution:" not in content
+
+    def test_strip_stray_resolution_from_open_ticket(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "proj")
+        path = td / "proj-dddd.md"
+        path.write_text("---\nid: proj-dddd\nstatus: open\nresolution: completed\ntitle: Stray\n---\n")
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "Stripped resolution from 1 ticket" in r.stdout
+        content = path.read_text()
+        assert "status: open" in content
+        assert "resolution:" not in content
+
+    def test_migrate_multiple_closed_tickets(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "proj")
+        (td / "proj-1111.md").write_text("---\nid: proj-1111\nstatus: closed\ntitle: A\n---\n")
+        (td / "proj-2222.md").write_text("---\nid: proj-2222\nstatus: closed\nresolution: canceled\ntitle: B\n---\n")
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "Migrated 2 tickets from closed status" in r.stdout
+
     def test_archived_tickets_renamed_too(self, tmp_path: Path) -> None:
         td = _make_project(tmp_path, "tiquette")
         archive = td / "archive"
