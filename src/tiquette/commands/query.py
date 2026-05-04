@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 from tiquette.store import (
+    AmbiguousIDError,
     Ticket,
     TicketNotFoundError,
     TicketSource,
@@ -93,6 +94,19 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_ls.add_argument("-A", "--assignee", help="Filter by assignee")
     p_ls.add_argument("-T", "--tag", help="Filter by tag")
     p_ls.add_argument("--type", help="Filter by type")
+
+    # [AI]
+    # Context: ls-parent-and-dep-filters -- ticket-query requirements list-filtered-by-parent + list-filtered-by-dependent
+    # Intent: scope `ls` to a subtree (--parent) or to direct dependents of a ticket (--dep)
+    scope_group = p_ls.add_mutually_exclusive_group()
+    scope_group.add_argument(
+        "--parent", metavar="ID",
+        help="Show <ID> and its descendants as a tree",
+    )
+    scope_group.add_argument(
+        "--dep", metavar="ID",
+        help="Show tickets that directly depend on <ID> (flat list)",
+    )
     p_ls.add_argument(
         "--sort", choices=VALID_SORTS, default="priority",
         help="Sort by field (priority|mtime)",
@@ -186,6 +200,44 @@ def _is_blocked(
         if t.parent == ticket.id and not is_terminal(t):
             return True
     return False
+
+
+# [AI]
+# Context: ls-parent-and-dep-filters -- ticket-query requirement=list-filtered-by-parent
+# Intent: partial-ID resolution scoped to the loaded source set so that --archived/--all
+#   can resolve archived IDs without forking the global resolve_id signature.
+def _resolve_in_set(partial: str, all_tickets: dict[str, Ticket]) -> str:
+    all_ids = sorted(all_tickets.keys())
+    if partial in all_tickets:
+        return partial
+    matches = [tid for tid in all_ids if partial in tid]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) == 0:
+        raise TicketNotFoundError(f"ticket '{partial}' not found")
+    raise AmbiguousIDError(
+        f"ambiguous ID '{partial}' matches multiple tickets: {matches}"
+    )
+
+
+# [AI]
+# Context: ls-parent-and-dep-filters -- ticket-query requirement=list-filtered-by-parent
+# Intent: collect transitive descendants of `root_id` via parent pointers
+def _descendants_of(root_id: str, all_tickets: dict[str, Ticket]) -> set[str]:
+    children_by_parent: dict[str, list[str]] = {}
+    for tid, t in all_tickets.items():
+        if t.parent is not None:
+            children_by_parent.setdefault(t.parent, []).append(tid)
+    found: set[str] = set()
+    queue = [root_id]
+    while queue:
+        cur = queue.pop()
+        for child in children_by_parent.get(cur, ()):
+            if child in found:
+                continue
+            found.add(child)
+            queue.append(child)
+    return found
 
 
 # [AI] Build parent->children map for tree rendering.
@@ -435,29 +487,60 @@ def _handle_ls(args: argparse.Namespace) -> None:
         source = "active"
     all_tickets = _load_all_tickets(tickets_dir, source=source)
 
+    # [AI]
+    # Context: ls-parent-and-dep-filters -- requirements list-filtered-by-parent + list-filtered-by-dependent
+    # Intent: resolve scope ID against the loaded source set, then narrow the
+    #   candidate set before primary/stackable filters run.
+    scope_root: str | None = None
+    candidate_ids: set[str] | None = None
+    raw_scope = args.parent or args.dep
+    if raw_scope is not None:
+        if not all_tickets:
+            print(f"ticket '{raw_scope}' not found", file=sys.stderr)
+            sys.exit(1)
+        try:
+            scope_id = _resolve_in_set(raw_scope, all_tickets)
+        except (TicketNotFoundError, ValueError) as e:
+            print(str(e), file=sys.stderr)
+            sys.exit(1)
+        if args.parent:
+            scope_root = scope_id
+            candidate_ids = {scope_id} | _descendants_of(scope_id, all_tickets)
+        else:
+            # --dep: tickets whose deps directly contain scope_id (excludes self)
+            candidate_ids = {
+                tid for tid, t in all_tickets.items() if scope_id in t.deps
+            }
+
     if not all_tickets:
         return
+
+    candidates: T.Iterable[Ticket]
+    if candidate_ids is not None:
+        candidates = [all_tickets[tid] for tid in candidate_ids]
+    else:
+        candidates = all_tickets.values()
 
     # -- Filtering --
     filtered: list[Ticket] = []
 
     if args.ready:
-        for t in all_tickets.values():
+        for t in candidates:
             if is_terminal(t):
                 continue
             if _is_blocked(t, all_tickets):
                 continue
             filtered.append(t)
     elif args.blocked:
-        for t in all_tickets.values():
+        for t in candidates:
             if is_terminal(t):
                 continue
             if _is_blocked(t, all_tickets):
                 filtered.append(t)
     elif args.status:
-        filtered = [t for t in all_tickets.values() if t.status == args.status]
+        filtered = [t for t in candidates if t.status == args.status]
     else:
-        filtered = list(all_tickets.values())
+        filtered = list(candidates)
 
     # Additional filters (stackable)
     if args.assignee:
@@ -475,6 +558,15 @@ def _handle_ls(args: argparse.Namespace) -> None:
     else:
         # Default: priority asc, then id asc
         filtered.sort(key=lambda t: (t.priority, t.id))
+
+    # [AI]
+    # Context: ls-parent-and-dep-filters -- requirement=list-filtered-by-dependent
+    # Intent: --dep renders flat; tree rendering is suppressed because parent/child
+    #   structure is orthogonal to dependency relationships.
+    if args.dep and not args.jsonl:
+        for t in (filtered[: args.limit] if args.limit else filtered):
+            print(_format_ticket_line_with_deps(t))
+        return
 
     # -- JSONL output --
     if args.jsonl:
@@ -505,19 +597,34 @@ def _handle_ls(args: argparse.Namespace) -> None:
     # Determine which parents need to be shown as context
     # (parent not in filtered set but has children in filtered set).
     # Skip context parents for --ready/--blocked since those filters
-    # explicitly exclude certain tickets.
+    # explicitly exclude certain tickets -- except --parent always keeps its
+    # named root visible at the tree root.
+    # [AI]
+    # Context: ls-parent-and-dep-filters -- requirement=list-filtered-by-parent
+    # Intent: cap the climb at scope_root so the tree never shows ancestors
+    #   above the named --parent ticket; ensure scope_root itself is added as
+    #   context even when --ready/--blocked otherwise suppresses climbing.
     context_parents: set[str] = set()
-    if not args.ready and not args.blocked:
+    climb_full = not args.ready and not args.blocked
+    if climb_full:
         for t in filtered:
             if t.parent and t.parent not in filtered_ids:
                 pid: str | None = t.parent
                 while pid and pid not in filtered_ids:
+                    # Stay within candidate set when --parent narrows scope.
+                    if candidate_ids is not None and pid not in candidate_ids:
+                        break
                     context_parents.add(pid)
+                    if pid == scope_root:
+                        break
                     parent_ticket = all_tickets.get(pid)
                     if parent_ticket:
                         pid = parent_ticket.parent
                     else:
                         break
+    elif scope_root is not None and scope_root not in filtered_ids:
+        # --ready/--blocked under --parent: still show the named root as context
+        context_parents.add(scope_root)
 
     # Root tickets: no parent, or parent not in filtered + context
     visible_ids = filtered_ids | context_parents

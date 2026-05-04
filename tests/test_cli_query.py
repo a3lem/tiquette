@@ -1089,3 +1089,269 @@ class TestArchiveBehavior:
         write_ticket(Ticket(id="arc-nf", title="Referrer", deps=["arc-ne"]), td)
         r = run_tq_env("archive", env=_make_env(td))
         assert "No completed or canceled tickets eligible for archiving" in r.stdout
+
+
+class TestLsParent:
+    """`tq ls --parent <id>` scopes to a subtree.
+    # spec: ticket-query requirement=list-filtered-by-parent
+    """
+
+    def _seed_epic(self, td: Path) -> None:
+        write_ticket(Ticket(id="epic-001", title="Epic", priority=1), td)
+        write_ticket(Ticket(id="task-001", title="Task one", parent="epic-001"), td)
+        write_ticket(Ticket(id="task-002", title="Task two", parent="task-001"), td)
+        write_ticket(Ticket(id="other-001", title="Unrelated"), td)
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-shows-itself-and-descendants
+    def test_parent_shows_itself_and_descendants(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        self._seed_epic(td)
+        r = run_tq_env("ls", "--parent", "epic-001", env=_make_env(td))
+        assert r.returncode == 0
+        assert "epic-001" in r.stdout
+        assert "task-001" in r.stdout
+        assert "task-002" in r.stdout
+        assert "other-001" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-renders-as-tree-with-root
+    def test_parent_renders_root_unindented_children_indented(
+        self, tmp_path: Path,
+    ) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-001", title="Epic"), td)
+        write_ticket(Ticket(id="task-001", title="Task one", parent="epic-001"), td)
+        r = run_tq_env("ls", "--parent", "epic-001", env=_make_env(td))
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        # Root must appear at column 0
+        assert lines[0].startswith("epic-001"), lines
+        # Child must be indented by box-drawing chars
+        child_lines = [l for l in lines if "task-001" in l]
+        assert child_lines, lines
+        assert any("──" in l for l in child_lines), child_lines
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-accepts-partial-id
+    def test_parent_accepts_partial_id(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-xyz-001", title="Epic"), td)
+        write_ticket(Ticket(id="task-aaa-001", title="Child", parent="epic-xyz-001"), td)
+        r = run_tq_env("ls", "--parent", "xyz", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        assert "epic-xyz-001" in r.stdout
+        assert "task-aaa-001" in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-with-non-existent-id
+    def test_parent_unknown_id_exits_nonzero(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="real-001", title="Real"), td)
+        r = run_tq_env("ls", "--parent", "nonexistent", env=_make_env(td))
+        assert r.returncode != 0
+        assert "ticket 'nonexistent' not found" in r.stderr
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-with-leaf-ticket-no-descendants
+    def test_parent_leaf_shows_only_root(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="leaf-001", title="Leaf"), td)
+        write_ticket(Ticket(id="other-001", title="Other"), td)
+        r = run_tq_env("ls", "--parent", "leaf-001", env=_make_env(td))
+        assert r.returncode == 0
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        assert len(lines) == 1, lines
+        assert "leaf-001" in lines[0]
+        assert "──" not in lines[0]  # no tree connectors
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-stacks-with---ready
+    def test_parent_stacks_with_ready(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-001", title="Epic"), td)
+        write_ticket(Ticket(id="task-001", title="Ready task", parent="epic-001"), td)
+        write_ticket(Ticket(id="task-002", title="Blocked task", parent="epic-001",
+                            deps=["task-003"]), td)
+        write_ticket(Ticket(id="task-003", title="Open dep"), td)
+        r = run_tq_env("ls", "--parent", "epic-001", "--ready", env=_make_env(td))
+        assert r.returncode == 0
+        assert "task-001" in r.stdout
+        assert "task-002" not in r.stdout
+        # Out-of-scope dep must not appear
+        assert "task-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-stacks-with---status
+    def test_parent_stacks_with_status(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-001", title="Epic"), td)
+        write_ticket(Ticket(id="task-001", title="Open", parent="epic-001", status="open"), td)
+        write_ticket(Ticket(id="task-002", title="Done", parent="epic-001", status="completed"), td)
+        r = run_tq_env("ls", "--parent", "epic-001", "--status", "completed",
+                       env=_make_env(td))
+        assert "task-002" in r.stdout
+        assert "task-001" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-stacks-with---tag
+    def test_parent_stacks_with_tag(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-001", title="Epic"), td)
+        write_ticket(Ticket(id="task-001", title="UI", parent="epic-001", tags=["ui"]), td)
+        write_ticket(Ticket(id="task-002", title="Backend", parent="epic-001",
+                            tags=["backend"]), td)
+        r = run_tq_env("ls", "--parent", "epic-001", "--tag", "ui", env=_make_env(td))
+        assert "task-001" in r.stdout
+        assert "task-002" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-root-is-shown-as-context-when-filtered-out
+    def test_parent_root_shown_as_context_when_filtered_out(
+        self, tmp_path: Path,
+    ) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="epic-001", title="Open epic", status="open"), td)
+        write_ticket(Ticket(id="task-001", title="Done task",
+                            parent="epic-001", status="completed"), td)
+        r = run_tq_env("ls", "--parent", "epic-001", "--status", "completed",
+                       env=_make_env(td))
+        assert r.returncode == 0
+        # Both root (as context) and child (as match) appear; root is unindented
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        assert any(l.startswith("epic-001") for l in lines), lines
+        assert any("task-001" in l and "──" in l for l in lines), lines
+
+    def test_parent_does_not_climb_above_scope(self, tmp_path: Path) -> None:
+        """--parent task-001 must not show grand-epic-000 even though task-001's
+        parent chain reaches it."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="grand-epic-000", title="Grand epic"), td)
+        write_ticket(Ticket(id="epic-001", title="Mid", parent="grand-epic-000"), td)
+        write_ticket(Ticket(id="task-001", title="Leaf", parent="epic-001"), td)
+        r = run_tq_env("ls", "--parent", "epic-001", env=_make_env(td))
+        assert "epic-001" in r.stdout
+        assert "task-001" in r.stdout
+        assert "grand-epic-000" not in r.stdout
+
+
+class TestLsDep:
+    """`tq ls --dep <id>` lists direct dependents only.
+    # spec: ticket-query requirement=list-filtered-by-dependent
+    """
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-shows-direct-dependents
+    def test_dep_shows_direct_dependents(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="Target"), td)
+        write_ticket(Ticket(id="task-002", title="Depends", deps=["task-001"]), td)
+        write_ticket(Ticket(id="task-003", title="Also depends", deps=["task-001"]), td)
+        write_ticket(Ticket(id="other-001", title="Unrelated"), td)
+        r = run_tq_env("ls", "--dep", "task-001", env=_make_env(td))
+        assert r.returncode == 0
+        assert "task-002" in r.stdout
+        assert "task-003" in r.stdout
+        assert "other-001" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-excludes-transitive-dependents
+    def test_dep_excludes_transitive(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="Root"), td)
+        write_ticket(Ticket(id="task-002", title="Direct", deps=["task-001"]), td)
+        write_ticket(Ticket(id="task-003", title="Transitive", deps=["task-002"]), td)
+        r = run_tq_env("ls", "--dep", "task-001", env=_make_env(td))
+        assert "task-002" in r.stdout
+        assert "task-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-excludes-the-target-ticket-itself
+    def test_dep_excludes_self(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="Self"), td)
+        write_ticket(Ticket(id="task-002", title="Dependent", deps=["task-001"]), td)
+        r = run_tq_env("ls", "--dep", "task-001", env=_make_env(td))
+        # Only the dependent line should be present; the target itself is excluded
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        assert len(lines) == 1, lines
+        assert "task-002" in lines[0]
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-with-no-dependents
+    def test_dep_no_dependents_empty(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="leaf-001", title="No dependents"), td)
+        write_ticket(Ticket(id="other-001", title="Unrelated"), td)
+        r = run_tq_env("ls", "--dep", "leaf-001", env=_make_env(td))
+        assert r.returncode == 0
+        assert r.stdout.strip() == ""
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-accepts-partial-id
+    def test_dep_accepts_partial_id(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-xyz-001", title="Target"), td)
+        write_ticket(Ticket(id="task-bbb-002", title="Dep", deps=["task-xyz-001"]), td)
+        r = run_tq_env("ls", "--dep", "xyz", env=_make_env(td))
+        assert r.returncode == 0
+        assert "task-bbb-002" in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-with-non-existent-id
+    def test_dep_unknown_id_exits_nonzero(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="real-001", title="Real"), td)
+        r = run_tq_env("ls", "--dep", "nonexistent", env=_make_env(td))
+        assert r.returncode != 0
+        assert "ticket 'nonexistent' not found" in r.stderr
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-output-is-flat-no-tree
+    def test_dep_output_is_flat(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="parent-001", title="Parent"), td)
+        write_ticket(Ticket(id="task-001", title="Target"), td)
+        write_ticket(Ticket(id="task-002", title="Dependent",
+                            parent="parent-001", deps=["task-001"]), td)
+        r = run_tq_env("ls", "--dep", "task-001", env=_make_env(td))
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        assert any(l.startswith("task-002") for l in lines), lines
+        # Parent must not appear as a context heading
+        assert "parent-001" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-stacks-with---status
+    def test_dep_stacks_with_status(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="Target"), td)
+        write_ticket(Ticket(id="task-002", title="Open dep",
+                            deps=["task-001"], status="open"), td)
+        write_ticket(Ticket(id="task-003", title="Done dep",
+                            deps=["task-001"], status="completed"), td)
+        r = run_tq_env("ls", "--dep", "task-001", "--status", "open", env=_make_env(td))
+        assert "task-002" in r.stdout
+        assert "task-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=dep-stacks-with---tag
+    def test_dep_stacks_with_tag(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="Target"), td)
+        write_ticket(Ticket(id="task-002", title="UI dep",
+                            deps=["task-001"], tags=["ui"]), td)
+        write_ticket(Ticket(id="task-003", title="Backend dep",
+                            deps=["task-001"], tags=["backend"]), td)
+        r = run_tq_env("ls", "--dep", "task-001", "--tag", "ui", env=_make_env(td))
+        assert "task-002" in r.stdout
+        assert "task-003" not in r.stdout
+
+    # spec: ticket-query requirement=list-filtered-by-dependent scenario=--parent-and---dep-mutually-exclusive
+    def test_parent_and_dep_mutually_exclusive(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="task-001", title="A"), td)
+        write_ticket(Ticket(id="task-002", title="B"), td)
+        r = run_tq_env("ls", "--parent", "task-001", "--dep", "task-002",
+                       env=_make_env(td))
+        assert r.returncode != 0

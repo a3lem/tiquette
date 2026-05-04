@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.1.5 – 2026-05-04
+
+- added: `tq ls --parent <id>` scopes the listing to a ticket and its transitive descendants, rendered as a tree rooted at `<id>`. The named root is shown as a context heading when it doesn't itself satisfy stacked filters. Stacks with all other filters.
+- added: `tq ls --dep <id>` lists tickets whose `deps` directly contain `<id>`, rendered as a flat list. Direct dependents only -- transitive chains are excluded. Stacks with all other filters.
+- added: `--parent` and `--dep` are mutually exclusive with each other.
+
 ## v0.1.4 – 2026-04-30
 
 - changed (BREAKING): `closed` status no longer exists. The two terminal statuses are now `completed` (via `tq close`) and `canceled` (via `tq cancel`).

@@ -91,4 +91,7 @@ Body content goes here.
 - `dep` validates for cycles on write (rejects and rolls back)
 - `ls --ready`: open/in_progress tickets with no unresolved deps AND no open children
 - `ls --blocked`: open/in_progress tickets with unresolved deps OR open children
+- `ls --parent <id>`: scope to `<id>` and its transitive descendants, rendered as a tree rooted at `<id>`. Stacks with all other filters.
+- `ls --dep <id>`: tickets whose `deps` directly contain `<id>` (direct only, transitive excluded). Rendered flat. Stacks with all other filters.
+- `--parent` and `--dep` are mutually exclusive with each other.
 - A parent with open children is implicitly blocked (even without explicit deps)
