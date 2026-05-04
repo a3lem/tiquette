@@ -1,3 +1,5 @@
+<!-- {{ edit_warning }} -->
+
 # tiquette
 
 Minimal file-based ticket system with dependency tracking. Tickets are markdown files with YAML frontmatter, stored in `.tickets/` alongside your code.

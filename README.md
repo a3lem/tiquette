@@ -1,3 +1,5 @@
+<!-- This file is managed by `shablon`. Do not edit directly. Instead, modify template in .shablon/templates/. -->
+
 # tiquette
 
 Minimal file-based ticket system with dependency tracking. Tickets are markdown files with YAML frontmatter, stored in `.tickets/` alongside your code.

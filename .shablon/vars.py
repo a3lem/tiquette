@@ -15,8 +15,10 @@ help_text = subprocess.run(
     check=True,
 ).stdout
 
+edit_warning = "This file is managed by `shablon`. Do not edit directly. Instead, modify template in .shablon/templates/."
+
 pyproject = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
 version = pyproject["project"]["version"]
 assert isinstance(version, str), f"expected str version, got {type(version).__name__}"
 
-print(json.dumps({"help_text": help_text, "version": version}))
+print(json.dumps({"help_text": help_text, "version": version, "edit_warning": edit_warning}))
