@@ -38,49 +38,34 @@ The rename SHALL be propagated into every other ticket's `parent`, `deps`, and `
 - Then the archive contains "tiqt-a1c1.md"
 - And the active ticket's links field references "tiqt-a1c1"
 
-## Requirement: Migrate legacy closed status
+## Requirement: Migrate completed status to closed
 
-WHEN a ticket has `status: closed`, `tq autofix` SHALL rewrite its status using the legacy `resolution` field as a guide and SHALL remove the `resolution` field from the frontmatter:
+WHEN a ticket has `status: completed`, `tq autofix` SHALL rewrite the status to `closed`. The migration SHALL apply unconditionally; no flag, no opt-in. The migration SHALL apply to active tickets and to tickets in `.tickets/archive/`. Each run SHALL print a single summary line `- Migrated N tickets from completed status` where N is the count of tickets whose status was rewritten. WHEN no tickets carry `status: completed`, the line SHALL NOT be printed.
 
-- IF `resolution` is `completed`, the new status SHALL be `completed`.
-- IF `resolution` is `canceled`, the new status SHALL be `canceled`.
-- IF the `resolution` field is absent, the new status SHALL be `completed`.
-
-WHEN a ticket carries a `resolution` field but its status is not `closed` (a stray field), `tq autofix` SHALL remove the `resolution` field without changing status.
-
-Migrations SHALL apply to active tickets and to tickets in `.tickets/archive/`. Each run SHALL print a single summary line `- Migrated N tickets from closed status` where N is the count of tickets whose status was rewritten; if N is zero but stray `resolution` fields were stripped, the system SHALL print `- Stripped resolution from N tickets` instead.
-
-### Scenario: Closed + completed resolution → completed
-- Given ticket "t-001" has `status: closed` and `resolution: completed`
+### Scenario: Active completed ticket migrated
+- Given ticket "t-001" has `status: completed`
 - When the user runs `tq autofix`
-- Then ticket "t-001" has `status: completed`
-- And ticket "t-001" has no `resolution` field
-- And stdout contains "- Migrated 1 ticket from closed status"
+- Then ticket "t-001" has `status: closed`
+- And stdout contains "- Migrated 1 ticket from completed status"
 
-### Scenario: Closed + canceled resolution → canceled
-- Given ticket "t-001" has `status: closed` and `resolution: canceled`
+### Scenario: Archived completed ticket migrated
+- Given an archived ticket "arc-001" has `status: completed`
 - When the user runs `tq autofix`
-- Then ticket "t-001" has `status: canceled`
-- And ticket "t-001" has no `resolution` field
+- Then the archived ticket has `status: closed`
 
-### Scenario: Closed without resolution → completed
-- Given ticket "t-001" has `status: closed` and no `resolution` field
+### Scenario: Multiple tickets migrated
+- Given tickets "t-001", "t-002", "t-003" all have `status: completed`
 - When the user runs `tq autofix`
-- Then ticket "t-001" has `status: completed`
+- Then all three tickets have `status: closed`
+- And stdout contains "- Migrated 3 tickets from completed status"
 
-### Scenario: Stray resolution on non-closed ticket is removed
-- Given ticket "t-001" has `status: open` and `resolution: completed`
+### Scenario: No completed tickets is a no-op
+- Given no ticket has `status: completed`
 - When the user runs `tq autofix`
-- Then ticket "t-001" has `status: open`
-- And ticket "t-001" has no `resolution` field
-- And stdout contains "- Stripped resolution from 1 ticket"
+- Then stdout does not contain "Migrated" and "from completed status"
 
-### Scenario: Archived legacy tickets migrated too
-- Given an archived ticket "arc-001" has `status: closed` and `resolution: canceled`
-- When the user runs `tq autofix`
-- Then the archived ticket has `status: canceled` and no `resolution` field
-
-### Scenario: No legacy data is a no-op
-- Given no ticket has `status: closed` or a `resolution` field
-- When the user runs `tq autofix`
-- Then stdout does not contain "Migrated" or "Stripped resolution"
+### Scenario: Idempotent
+- Given ticket "t-001" has `status: completed`
+- When the user runs `tq autofix` twice
+- Then ticket "t-001" has `status: closed`
+- And the second run does not migrate any tickets

@@ -1,6 +1,6 @@
 ---
 id: tiqt-daae
-status: completed
+status: closed
 type: feature
 priority: 2
 deps: []

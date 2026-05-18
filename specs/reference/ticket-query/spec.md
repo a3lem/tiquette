@@ -25,7 +25,7 @@ The system SHALL display a ticket's full content (frontmatter + body) when `tq s
 - And the output contains "show-002 [open]"
 
 ### Scenario: Show hides blockers when all deps are in terminal status
-- Given ticket "show-001" depends on "show-002" (status completed)
+- Given ticket "show-001" depends on "show-002" (status closed)
 - When the user runs `tq show show-001`
 - Then the output does not contain "## Blockers"
 
@@ -92,7 +92,7 @@ The system SHALL display a ticket's frontmatter and computed relationships (with
 
 ## Requirement: List tickets
 
-The system SHALL list tickets matching filter criteria when `tq ls` is invoked. With no source-selection flag, only active (non-archived) tickets are considered. With no status filter, all statuses within the selected source set are shown, sorted by priority. The `--status` filter (short: `-s`) accepts one of `open`, `in_progress`, `completed`, `canceled`. Source selection (`--archived`, `--all`) is governed by the "List source axis" requirement.
+The system SHALL list tickets matching filter criteria when `tq ls` is invoked. With no source-selection flag, only active (non-archived) tickets are considered. With no status filter, all statuses within the selected source set are shown, sorted by priority. The `--status` filter (short: `-s`) accepts one of `open`, `in_progress`, `closed`, `canceled`. Source selection (`--archived`, `--all`) is governed by the "List source axis" requirement. The `-T` short for `--tag` SHALL NOT be accepted.
 
 ### Scenario: List all open tickets
 - Given tickets "list-0001" and "list-0002" exist (status open)
@@ -106,19 +106,19 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - And the output does not contain "arc-001"
 
 ### Scenario: List with --status open
-- Given "list-0001" is open and "list-0002" is completed
+- Given "list-0001" is open and "list-0002" is closed
 - When the user runs `tq ls --status open`
 - Then the output contains "list-0001"
 - And the output does not contain "list-0002"
 
-### Scenario: List with -s completed
-- Given "list-0001" is open and "list-0002" is completed
-- When the user runs `tq ls -s completed`
+### Scenario: List with -s closed
+- Given "list-0001" is open and "list-0002" is closed
+- When the user runs `tq ls -s closed`
 - Then the output contains "list-0002"
 - And the output does not contain "list-0001"
 
 ### Scenario: List with --status canceled
-- Given "list-0001" is canceled and "list-0002" is completed
+- Given "list-0001" is canceled and "list-0002" is closed
 - When the user runs `tq ls --status canceled`
 - Then the output contains "list-0001"
 - And the output does not contain "list-0002"
@@ -140,12 +140,12 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - And the output does not contain "ready-002"
 
 ### Scenario: Ready includes tickets with all deps in terminal status
-- Given "ready-001" depends on "ready-002" (status completed)
+- Given "ready-001" depends on "ready-002" (status closed)
 - When the user runs `tq ls --ready`
 - Then the output contains "ready-001"
 
 ### Scenario: Ready excludes terminal tickets
-- Given "ready-001" has status completed
+- Given "ready-001" has status closed
 - When the user runs `tq ls --ready`
 - Then the output does not contain "ready-001"
 
@@ -171,13 +171,13 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - Then the output contains "block-001"
 
 ### Scenario: Blocked excludes tickets with all deps terminal and no open children
-- Given "block-001" depends on "block-002" (status completed) and has no open children
+- Given "block-001" depends on "block-002" (status closed) and has no open children
 - When the user runs `tq ls --blocked`
 - Then the output does not contain "block-001"
 
 ### Scenario: Limit
-- Given two completed tickets exist
-- When the user runs `tq ls --status completed --limit 1`
+- Given two closed tickets exist
+- When the user runs `tq ls --status closed --limit 1`
 - Then the output has exactly 1 line
 
 ### Scenario: JSONL output
@@ -199,21 +199,15 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - Then the output contains "t-001"
 - And the output does not contain "t-002"
 
-### Scenario: -a is no longer short for --assignee
-- When the user runs `tq ls -a Alice`
-- Then `Alice` is not interpreted as an assignee filter
-
 ### Scenario: Filter by tag
 - Given "t-001" has tag "ui" and "t-002" has tag "backend"
 - When the user runs `tq ls --tag ui`
 - Then the output contains "t-001"
 - And the output does not contain "t-002"
 
-### Scenario: -T is short for --tag
-- Given "t-001" has tag "ui" and "t-002" has tag "backend"
+### Scenario: -T is not accepted as a short for --tag
 - When the user runs `tq ls -T ui`
-- Then the output contains "t-001"
-- And the output does not contain "t-002"
+- Then the command exits non-zero
 
 ### Scenario: Filter by type
 - Given "t-001" has type "bug" and "t-002" has type "task"
@@ -226,9 +220,10 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 - When the user runs `tq ls --sort mtime`
 - Then tickets are sorted by modification time
 
-### Scenario: --status closed is rejected
-- When the user runs `tq ls --status closed`
+### Scenario: --status completed is rejected
+- When the user runs `tq ls --status completed`
 - Then the command exits non-zero
+- And stderr indicates `closed` is the accepted spelling
 
 ### Scenario: --completed flag is rejected
 - When the user runs `tq ls --completed`
@@ -258,7 +253,7 @@ The system SHALL list tickets matching filter criteria when `tq ls` is invoked. 
 
 The system SHALL format each ticket line in `ls` output as: `<id> <tags> - <checkbox> <title>` where:
 
-- The checkbox represents lifecycle state derived from `status` alone: `[ ]` for `open`, `[/]` for `in_progress`, `[x]` for `completed`, and `[~]` for `canceled`.
+- The checkbox represents lifecycle state derived from `status` alone: `[ ]` for `open`, `[/]` for `in_progress`, `[x]` for `closed`, and `[~]` for `canceled`.
 - Zero or more tag tokens may appear after the ID, each individually bracketed:
   - The priority tag `[P<n>]` SHALL be shown only when priority is not 2 (the default).
   - The type tag (e.g. `[epic]`, `[feature]`) SHALL be shown only when the type is not "task" (the default).
@@ -291,9 +286,9 @@ The system SHALL format each ticket line in `ls` output as: `<id> <tags> - <chec
 - When the user runs `tq ls`
 - Then the line for "fmt-001" is `fmt-001 - [/] Working`
 
-### Scenario: Completed renders checked checkbox
-- Given ticket "fmt-001" exists with status completed
-- When the user runs `tq ls --status completed`
+### Scenario: Closed renders checked checkbox
+- Given ticket "fmt-001" exists with status closed
+- When the user runs `tq ls --status closed`
 - Then the line contains `[x]`
 
 ### Scenario: Canceled renders tilde checkbox
@@ -379,7 +374,7 @@ The system SHALL list all tags with counts when `tq tags` is invoked. Only open/
 - Then tags are listed with counts, most frequent first
 
 ### Scenario: Tags excludes terminal tickets by default
-- Given a tag appears on both open and completed tickets
+- Given a tag appears on both open and closed tickets
 - When the user runs `tq tags`
 - Then the count reflects only open/in_progress tickets
 
@@ -394,14 +389,14 @@ The system SHALL list all linked pairs across tickets when `tq links` is invoked
 
 ## Requirement: Archive
 
-The system SHALL move tickets in a terminal status (`completed` or `canceled`) to `.tickets/archive/` when `tq archive` is invoked.
+The system SHALL move tickets in a terminal status (`closed` or `canceled`) to `.tickets/archive/` when `tq archive` is invoked.
 
 The system SHALL NOT archive a terminal ticket when any non-archived ticket references it via `deps`, `links`, or `parent`. Referenced tickets are skipped with a diagnostic on stderr naming the referrers.
 
 When a ticket is blocked from archiving, any terminal ticket it references SHALL also be blocked (cascading). The archivable set is computed iteratively until stable.
 
 ### Scenario: Archive moves terminal tickets
-- Given tickets "t-001" (completed) and "t-002" (open) exist
+- Given tickets "t-001" (closed) and "t-002" (open) exist
 - When the user runs `tq archive`
 - Then "t-001" exists in `.tickets/archive/`
 - And "t-001" does not exist in `.tickets/`
@@ -416,56 +411,56 @@ When a ticket is blocked from archiving, any terminal ticket it references SHALL
 ### Scenario: No terminal tickets
 - Given all tickets are open or in_progress
 - When the user runs `tq archive`
-- Then the output contains "No completed or canceled tickets to archive"
+- Then the output contains "No closed or canceled tickets to archive"
 
 ### Scenario: Archive creates directory on first use
-- Given a completed ticket exists and no archive directory
+- Given a closed ticket exists and no archive directory
 - When the user runs `tq archive`
 - Then `.tickets/archive/` is created
 
 ### Scenario: Archive is idempotent
-- Given a completed ticket exists
+- Given a closed ticket exists
 - When the user runs `tq archive` twice
 - Then the second run reports no tickets to archive
 
 ### Scenario: Archived ticket file is intact
-- Given ticket "t-001" is completed and archived
+- Given ticket "t-001" is closed and archived
 - Then the archived file contains the original frontmatter and content
 
 ### Scenario: Skips ticket referenced as dependency
-- Given completed ticket "t-001" and open ticket "t-002" with deps including "t-001"
+- Given closed ticket "t-001" and open ticket "t-002" with deps including "t-001"
 - When the user runs `tq archive`
 - Then "t-001" remains in `.tickets/`
 - And stderr contains "Skipped t-001: referenced by t-002"
 
 ### Scenario: Skips ticket referenced as link
-- Given completed ticket "t-001" and open ticket "t-002" with links including "t-001"
+- Given closed ticket "t-001" and open ticket "t-002" with links including "t-001"
 - When the user runs `tq archive`
 - Then "t-001" remains in `.tickets/`
 - And stderr contains "Skipped t-001"
 
 ### Scenario: Skips ticket that is a parent
-- Given completed ticket "t-001" and open ticket "t-002" with parent "t-001"
+- Given closed ticket "t-001" and open ticket "t-002" with parent "t-001"
 - When the user runs `tq archive`
 - Then "t-001" remains in `.tickets/`
 - And stderr contains "Skipped t-001"
 
 ### Scenario: Mutually-terminal group archives together
-- Given completed tickets "t-001" and "t-002" linked to each other, no open tickets reference either
+- Given closed tickets "t-001" and "t-002" linked to each other, no open tickets reference either
 - When the user runs `tq archive`
 - Then both "t-001" and "t-002" are moved to `.tickets/archive/`
 
 ### Scenario: Cascade blocks dependent terminal tickets
-- Given completed "t-b" and completed "t-a" (deps: ["t-b"]), and open "t-c" (deps: ["t-a"])
+- Given closed "t-b" and closed "t-a" (deps: ["t-b"]), and open "t-c" (deps: ["t-a"])
 - When the user runs `tq archive`
 - Then "t-a" remains (referenced by open "t-c")
 - And "t-b" remains (referenced by remaining "t-a")
 - And stderr contains "Skipped"
 
 ### Scenario: No eligible tickets
-- Given completed ticket "t-001" and open ticket "t-002" with deps including "t-001"
+- Given closed ticket "t-001" and open ticket "t-002" with deps including "t-001"
 - When the user runs `tq archive`
-- Then the output contains "No completed or canceled tickets eligible for archiving"
+- Then the output contains "No closed or canceled tickets eligible for archiving"
 
 ## Requirement: Path command
 
@@ -502,23 +497,23 @@ The system SHALL provide a source-selection axis on `tq ls` that controls whethe
 
 ### Scenario: --archived combines with --status canceled
 - Given archived ticket "arc-001" has status canceled
-- And archived ticket "arc-002" has status completed
+- And archived ticket "arc-002" has status closed
 - When the user runs `tq ls --archived --status canceled`
 - Then the output contains "arc-001"
 - And the output does not contain "arc-002"
 
-### Scenario: --archived combines with -s completed
-- Given archived ticket "arc-001" has status completed
+### Scenario: --archived combines with -s closed
+- Given archived ticket "arc-001" has status closed
 - And archived ticket "arc-002" has status canceled
-- When the user runs `tq ls --archived -s completed`
+- When the user runs `tq ls --archived -s closed`
 - Then the output contains "arc-001"
 - And the output does not contain "arc-002"
 
-### Scenario: --all combines with --status completed
-- Given active "done-001" has status completed
-- And archived "done-002" has status completed
+### Scenario: --all combines with --status closed
+- Given active "done-001" has status closed
+- And archived "done-002" has status closed
 - And active "done-003" has status canceled
-- When the user runs `tq ls --all --status completed`
+- When the user runs `tq ls --all --status closed`
 - Then the output contains "done-001"
 - And the output contains "done-002"
 - And the output does not contain "done-003"
@@ -582,8 +577,8 @@ The system SHALL restrict `tq ls` to a named ticket and its transitive descendan
 - And the output does not contain "task-002"
 
 ### Scenario: Parent stacks with --status
-- Given "epic-001" has children "task-001" (open) and "task-002" (completed)
-- When the user runs `tq ls --parent epic-001 --status completed`
+- Given "epic-001" has children "task-001" (open) and "task-002" (closed)
+- When the user runs `tq ls --parent epic-001 --status closed`
 - Then the output contains "task-002"
 - And the output does not contain "task-001"
 
@@ -594,8 +589,8 @@ The system SHALL restrict `tq ls` to a named ticket and its transitive descendan
 - And the output does not contain "task-002"
 
 ### Scenario: Parent root is shown as context when filtered out
-- Given "epic-001" (status open) has child "task-001" (status completed)
-- When the user runs `tq ls --parent epic-001 --status completed`
+- Given "epic-001" (status open) has child "task-001" (status closed)
+- When the user runs `tq ls --parent epic-001 --status closed`
 - Then the output contains "epic-001" rendered as a context heading at the root
 - And the output contains "task-001" indented beneath it
 
@@ -654,7 +649,7 @@ The system SHALL restrict `tq ls` to tickets whose `deps` field directly contain
 - And "parent-001" does not appear as a context heading
 
 ### Scenario: Dep stacks with --status
-- Given "task-002" (open) and "task-003" (completed) both have deps containing "task-001"
+- Given "task-002" (open) and "task-003" (closed) both have deps containing "task-001"
 - When the user runs `tq ls --dep task-001 --status open`
 - Then the output contains "task-002"
 - And the output does not contain "task-003"

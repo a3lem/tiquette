@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tiquette.store import Ticket
+
 
 def run_tq(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
@@ -31,10 +33,10 @@ class TestCreateArgs:
         result = run_tq("create", "My ticket")
         assert result.returncode == 0
 
-    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-default-title
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-without-title-is-rejected
     def test_create_no_title(self) -> None:
         result = run_tq("create")
-        assert result.returncode == 0
+        assert result.returncode != 0
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-description
     def test_create_with_description(self) -> None:
@@ -125,12 +127,12 @@ class TestStatusTransitionArgs:
         result = run_tq("start", "test-0001")
         assert result.returncode == 0
 
-    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-completed
+    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-closed
     def test_close_requires_id(self) -> None:
         result = run_tq("close")
         assert result.returncode != 0
 
-    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-completed
+    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-closed
     def test_close_accepts_id(self) -> None:
         result = run_tq("close", "test-0001")
         assert result.returncode == 0
@@ -145,12 +147,12 @@ class TestStatusTransitionArgs:
         result = run_tq("cancel", "test-0001")
         assert result.returncode == 0
 
-    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-sets-open-and-clears-resolution
+    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-closed
     def test_reopen_requires_id(self) -> None:
         result = run_tq("reopen")
         assert result.returncode != 0
 
-    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-sets-open-and-clears-resolution
+    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-closed
     def test_reopen_accepts_id(self) -> None:
         result = run_tq("reopen", "test-0001")
         assert result.returncode == 0
@@ -188,14 +190,13 @@ class TestCreateBehavior:
         content = _read_ticket_file(tickets_dir, ticket_id)
         assert "# My first ticket" in content
 
-    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-default-title
-    def test_create_default_title(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-without-title-is-rejected
+    def test_create_no_title_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)
         tickets_dir = tmp_path / ".tickets"
         result = run_tq("create", env={"TICKETS_DIR": str(tickets_dir)})
-        ticket_id = result.stdout.strip()
-        content = _read_ticket_file(tickets_dir, ticket_id)
-        assert "# Untitled" in content
+        assert result.returncode != 0
+        assert result.stderr  # argparse should emit usage error
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-description
     def test_create_with_description(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -246,8 +247,12 @@ class TestCreateBehavior:
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-parent
     def test_create_with_parent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tiquette.store import write_ticket
         monkeypatch.chdir(tmp_path)
         tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        # v1.2: create --parent validates the parent exists
+        write_ticket(Ticket(id="parent-001", title="Parent"), tickets_dir)
         result = run_tq("create", "Child", "--parent", "parent-001", env={"TICKETS_DIR": str(tickets_dir)})
         ticket_id = result.stdout.strip()
         content = _read_ticket_file(tickets_dir, ticket_id)
@@ -264,8 +269,13 @@ class TestCreateBehavior:
 
     # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-deps
     def test_create_with_deps(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        from tiquette.store import write_ticket
         monkeypatch.chdir(tmp_path)
         tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        # v1.2: create --dep validates each dep target exists
+        write_ticket(Ticket(id="dep-001", title="Dep 1"), tickets_dir)
+        write_ticket(Ticket(id="dep-002", title="Dep 2"), tickets_dir)
         result = run_tq("create", "Blocked", "--dep", "dep-001", "--dep", "dep-002", env={"TICKETS_DIR": str(tickets_dir)})
         ticket_id = result.stdout.strip()
         content = _read_ticket_file(tickets_dir, ticket_id)
@@ -310,8 +320,7 @@ def _make_ticket(
     title: str = "Test ticket",
     status: str = "open",
     parent: str | None = None,
-) -> "Ticket":
-    from tiquette.store import Ticket
+) -> Ticket:
     return Ticket(
         id=ticket_id, title=title, status=status,
         parent=parent,
@@ -331,8 +340,8 @@ class TestStatusTransitionBehavior:
         assert result.returncode == 0
         assert read_ticket("test-0001", tickets_dir).status == "in_progress"
 
-    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-completed
-    def test_close_sets_completed(self, tmp_path: Path) -> None:
+    # spec: ticket-lifecycle requirement=close-command scenario=close-sets-closed
+    def test_close_sets_closed(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
@@ -340,9 +349,10 @@ class TestStatusTransitionBehavior:
         result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         t = read_ticket("test-0001", tickets_dir)
-        assert t.status == "completed"
+        assert t.status == "closed"
         content = (tickets_dir / "test-0001.md").read_text()
         assert "resolution" not in content
+        assert "status: completed" not in content
 
     # spec: ticket-lifecycle requirement=close-command scenario=close-rejects-parent-with-open-children
     def test_close_rejects_parent_with_open_children(self, tmp_path: Path) -> None:
@@ -363,7 +373,7 @@ class TestStatusTransitionBehavior:
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="closed", parent="test-0001"), tickets_dir)
         result = run_tq("close", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
 
@@ -433,7 +443,7 @@ class TestStatusTransitionBehavior:
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="closed", parent="test-0001"), tickets_dir)
         result = run_tq("cancel", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         assert read_ticket("test-0001", tickets_dir).status == "canceled"
@@ -457,10 +467,10 @@ class TestStatusTransitionBehavior:
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(_make_ticket("test-0001"), tickets_dir)
-        write_ticket(_make_ticket("test-0002", status="completed", parent="test-0001"), tickets_dir)
+        write_ticket(_make_ticket("test-0002", status="closed", parent="test-0001"), tickets_dir)
         result = run_tq("cancel", "--force", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
-        assert read_ticket("test-0002", tickets_dir).status == "completed"
+        assert read_ticket("test-0002", tickets_dir).status == "closed"
         assert read_ticket("test-0001", tickets_dir).status == "canceled"
 
     # spec: ticket-lifecycle requirement=close-command scenario=force-close-cascades-to-non-terminal-descendants
@@ -474,7 +484,7 @@ class TestStatusTransitionBehavior:
         result = run_tq("close", "-f", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         for tid in ("test-0001", "test-0002", "test-0003"):
-            assert read_ticket(tid, tickets_dir).status == "completed", tid
+            assert read_ticket(tid, tickets_dir).status == "closed", tid
 
     # spec: ticket-lifecycle requirement=close-command scenario=force-close-leaves-already-terminal-descendants-untouched
     def test_force_close_skips_closed_descendants(self, tmp_path: Path) -> None:
@@ -486,14 +496,14 @@ class TestStatusTransitionBehavior:
         result = run_tq("close", "--force", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         assert read_ticket("test-0002", tickets_dir).status == "canceled"
-        assert read_ticket("test-0001", tickets_dir).status == "completed"
+        assert read_ticket("test-0001", tickets_dir).status == "closed"
 
-    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-completed
-    def test_reopen_sets_open_from_completed(self, tmp_path: Path) -> None:
+    # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-closed
+    def test_reopen_sets_open_from_closed(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket, write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        write_ticket(_make_ticket("test-0001", status="completed"), tickets_dir)
+        write_ticket(_make_ticket("test-0001", status="closed"), tickets_dir)
         result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         t = read_ticket("test-0001", tickets_dir)
@@ -557,7 +567,7 @@ class TestTransitionOutput:
         from tiquette.store import write_ticket
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        write_ticket(_make_ticket("test-0001", status="completed"), tickets_dir)
+        write_ticket(_make_ticket("test-0001", status="closed"), tickets_dir)
         result = run_tq("reopen", "test-0001", env={"TICKETS_DIR": str(tickets_dir)})
         assert result.returncode == 0
         assert "test-0001" in result.stdout
@@ -593,3 +603,112 @@ class TestTransitionOutput:
         assert result.returncode == 0
         assert "par-0001" in result.stdout
         assert "par-0002" in result.stdout
+
+
+class TestCreateWithLink:
+    """Create with --link flag writes symmetric links."""
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-links-is-symmetric
+    def test_create_with_link_symmetric(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        from tiquette.store import Ticket, write_ticket, read_ticket
+        write_ticket(Ticket(id="rel-001", title="Existing"), tickets_dir)
+
+        result = run_tq("create", "Related ticket", "--link", "rel-001",
+                        env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        new_id = result.stdout.strip()
+        assert new_id  # non-empty ID printed
+
+        # New ticket references rel-001
+        new_content = _read_ticket_file(tickets_dir, new_id)
+        assert "rel-001" in new_content
+
+        # rel-001 back-references the new ticket
+        rel_content = _read_ticket_file(tickets_dir, "rel-001")
+        assert new_id in rel_content
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-links-is-symmetric
+    def test_create_with_link_arg_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        from tiquette.store import Ticket, write_ticket
+        write_ticket(Ticket(id="lnk-001", title="Target"), tickets_dir)
+        result = run_tq("create", "Linked ticket", "--link", "lnk-001",
+                        env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+
+
+class TestCreateWithNote:
+    """Create with --note flag writes timestamped notes matching created timestamp."""
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-note
+    def test_create_with_note_creates_notes_section(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        result = run_tq("create", "Kickoff ticket", "--note", "initial context",
+                        env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        ticket_id = result.stdout.strip()
+        content = _read_ticket_file(tickets_dir, ticket_id)
+        assert "## Notes" in content
+        assert "initial context" in content
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-note
+    def test_create_with_note_timestamp_matches_created(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import re as _re
+        from datetime import datetime
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        result = run_tq("create", "Kickoff ticket", "--note", "initial context",
+                        env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        ticket_id = result.stdout.strip()
+        content = _read_ticket_file(tickets_dir, ticket_id)
+
+        # Extract created timestamp from frontmatter
+        created_match = _re.search(r"^created: (.+)$", content, _re.MULTILINE)
+        assert created_match, "no 'created' field found"
+        created_ts = created_match.group(1).strip()
+
+        # The note should carry the same ISO 8601 timestamp
+        assert created_ts in content, (
+            f"note timestamp {created_ts!r} not found in ticket content"
+        )
+
+    # spec: ticket-lifecycle requirement=create-ticket scenario=create-with-multiple-notes-shares-one-timestamp
+    def test_create_with_multiple_notes_share_timestamp(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        import re as _re
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        result = run_tq("create", "Multi-note", "--note", "first", "--note", "second",
+                        env={"TICKETS_DIR": str(tickets_dir)})
+        assert result.returncode == 0
+        ticket_id = result.stdout.strip()
+        content = _read_ticket_file(tickets_dir, ticket_id)
+
+        assert "first" in content
+        assert "second" in content
+
+        # Extract all ISO 8601-looking timestamps from the Notes section
+        notes_section_match = _re.search(r"## Notes\n(.+)", content, _re.DOTALL)
+        assert notes_section_match, "no Notes section found"
+        notes_text = notes_section_match.group(1)
+
+        # Both notes must appear in order
+        first_pos = notes_text.find("first")
+        second_pos = notes_text.find("second")
+        assert first_pos != -1 and second_pos != -1
+        assert first_pos < second_pos, "notes not in insertion order"
+
+        # Both should share the created timestamp (one timestamp per invocation)
+        created_match = _re.search(r"^created: (.+)$", content, _re.MULTILINE)
+        assert created_match
+        created_ts = created_match.group(1).strip()
+        # Both notes carry the shared timestamp — count occurrences
+        assert content.count(created_ts) >= 2, (
+            "expected both notes to carry the same timestamp"
+        )

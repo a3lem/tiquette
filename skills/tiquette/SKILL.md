@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.1.5
+  version: 0.2.0
   note: Generated. Do not modify
 ---
 
@@ -38,14 +38,14 @@ If a matching ticket exists, use it. If not, create one. Trivial one-shot change
 | **Statuses** | `open` → `in_progress` → `closed` (via `start`/`close`/`cancel`) |
 | **Priority** | 0–4, 0 is highest. Default 2. |
 | **Types** | `bug`, `feature`, `task`, `epic`, `chore`. Default `task`. |
-| **Resolution** | `completed` (via `close`) or `canceled` (via `cancel`) |
+| **Terminal status** | `closed` (via `close`) or `canceled` (via `cancel`) |
 | **Dependencies** | Directed: "A depends on B" means B blocks A |
 | **Links** | Symmetric, informational only (don't affect blocking) |
 
 ## CLI Reference
 
 ```
-tq - a minimal ticket system with dependency tracking
+tq (tiquette) - a minimal ticket system with dependency tracking
 
 Usage: tq <command> [args]
 
@@ -53,75 +53,93 @@ Frequently Used
 ---------------
   ls --ready                            List open tickets that are not blocked
   show <id>                             Display ticket (meta + body)
-  create [title]                        Create new ticket (prints ID)
+  create <title> [field-options]        Create new ticket (prints ID)
+  edit <id> [field-options]             Modify ticket fields
   start <id>                            Set ticket status to in_progress
-  close <id>                            Close ticket as completed
+  close <id>                            Set status to closed (ticket is complete)
 
 Commands
 --------
+(<id> / ID below always refers to a ticket ID)
 
 Lifecycle:
-  create [title] [options]              Create ticket, prints ID
-    -d, --description TEXT              Body content (markdown below frontmatter)
+  create <title> [field-options]        Create ticket, prints ID
+    -d, --description TEXT              Description (markdown body)
     -t, --type TYPE                     bug|feature|task|epic|chore [default: task]
     -p, --priority N                    0-4, 0=highest [default: 2]
     -A, --assignee NAME                 Assignee [default: null]
-    --xref REF                          External reference (e.g., gh-123, JIRA-456)
-    --parent ID                         Parent ticket ID
-    --tag TAG                           Tag (repeat for multiple)
-    --dep ID                            Blocker ID (repeat for multiple)
+        --xref REF                      External reference, e.g. gh-123
+        --parent ID                     Nest under parent (makes this ticket a child of ID)
+        --tag TAG                       Add tag (repeatable)
+        --dep ID                        Register blocking dependency on other ticket (repeatable)
+        --link ID                       Associate ticket (repeatable, symmetric)
+        --note TEXT                     Append timestamped note (repeatable)
+
+  edit <id> [field-options]             Modify ticket fields
+                                        Accepts all create field-options (above), plus:
+        --title TEXT                    Rename ticket
+        --untag TAG                     Remove tag (repeatable)
+        --undep ID                      Remove blocker (repeatable)
+        --unlink ID                     Remove association (repeatable)
+        --unset FIELD                   Clear a single-value field (repeatable)
+                                        FIELD in {parent, xref, assignee}
+                                        Setting and unsetting the same field in
+                                        the same call is an error.
+
   start <id>                            Set status to in_progress
-  close <id> [-f]                       Set status to completed
+  close <id> [-f]                       Set status to closed (ticket is complete)
                                         -f/--force cascades through open descendants
   cancel <id> [-f]                      Set status to canceled
                                         -f/--force cascades through open descendants
   reopen <id>                           Set status to open
-  archive                               Move completed and canceled tickets to archive directory
-
-Relationships:
-  dep <id> <dep-id> [dep-id...]         Add dependency (id is blocked by dep-ids)
-  undep <id> <dep-id> [dep-id...]       Remove blocking dependency
-  nest <child> [child...] <parent>      Set parent (last arg is destination, like mv)
-  unnest <id> [id...]                   Remove from parent
-  link <id> <id> [id...]                Associate tickets (symmetric, informational)
-  unlink <id> <id> [id...]              Remove association(s)
-  deps <id> [--full]                    Show dependency tree (--full disables dedup)
-  links                                 List all linked pairs across tickets
-
-Fields:
-  assign <id> [assignee]                Set or clear assignee
-  change-prio <id> <priority>           Update priority: 0-4, 0=highest
-  change-type <id> <type>               Change ticket type
-  tag <id> <tag> [tag...]               Append tag(s)
-  untag <id> <tag> [tag...]             Remove tag(s)
-  xref <id> [xref]                      Set or clear external reference
-  tags                                  List all tags with counts, sorted by frequency
-
-Content:
-  describe <id> <text>                  Set/replace description section
-  add-note <id> <text>                  Append timestamped note (or pipe via stdin)
+  archive                               Move closed and canceled tickets to archive
 
 View:
   ls [options]                          List tickets [default: all statuses]
-    -s, --status X                      Filter: open|in_progress|completed|canceled
+    -s, --status X                      Filter: open|in_progress|closed|canceled
     --ready                             Actionable: no unresolved deps or open children
     --blocked                           Has unresolved deps or open children
-    --assignee NAME                     Filter by assignee
+    -a, --all                           Include archived tickets
+    --archived                          Show only archived tickets
     --tag TAG                           Filter by tag
     --type TYPE                         Filter by type
+    -A, --assignee NAME                 Filter by assignee
+    --parent ID                         Show ticket and its descendants as a tree
+    --dep ID                            Show tickets that directly depend on ID (flat list)
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
   show <id> [--json]                    Display ticket (frontmatter + body)
   info <id> [--json]                    Frontmatter + computed relationships (no body)
   path <id>                             Print file path for direct editing
+  deps <id> [--full]                    Show dependency tree (--full disables dedup)
+  links                                 List all linked pairs across tickets
+  tags                                  List all tags with counts, sorted by frequency
 
 Maintenance:
   validate                              Check all tickets for referential integrity
   autofix                               Update tickets to be consistent with current behavior
+
+Examples
+--------
+  tq create 'Fix parser dropping trailing commas' -d 'parser.py:142' -t bug -p 1
+  tq edit abf1 --tag urgent --untag stale -p 0 --note 'customer escalation'
+  tq edit abf1 --parent 9zk2 --dep 4mn8
+  tq ls --ready --tag backend --sort priority
 ```
 
 ## Things --help Won't Tell You
+
+### Always write a description
+
+Pass `-d "..."` on `tq create` for anything that will outlive the current task. Titles get terse fast -- "fix parser bug" is meaningless a week later. The description is the only place to anchor the ticket in its original context: what prompted it, what the user actually said, links to relevant files or PRs, what "done" looks like.
+
+```bash
+tq create "Fix parser dropping trailing commas" \
+  -d "User reported on 2026-05-04 that comma-trailing JSON5 inputs raise. See parser.py:142. Done = round-trip test passes for trailing commas in arrays and objects."
+```
+
+The only time it's safe to skip `-d`: short-lived subtasks created during a single session where the parent ticket or surrounding conversation already carries the context, and you expect to close them the same day.
 
 ### Editing fields not covered by a command
 
@@ -138,25 +156,21 @@ Parents are implicitly blocked by open children, even without explicit deps. Thi
 
 Parenting is not restricted by type. A `task` can have subtasks, a `feature` can have child bugs, etc. By convention `epic` groups `feature`s, but that's a convention, not a constraint -- reach for `epic` only when you actually want an epic-sized container, not just because a ticket has children.
 
-### Nest argument order
+### Parenting via `tq edit`
 
-`nest` follows `mv` convention: last argument is the destination (parent).
-
-```bash
-tq nest child1 child2 parent   # both children move under parent
-```
+There is no `tq nest`. Move a ticket under a parent with `tq edit <child> --parent <parent>`. For multiple children, run one `edit` per child (or a shell loop). Clear a parent with `tq edit <child> --unset parent`.
 
 ### No assignee default
 
-`tq` does not auto-assign to the git user. Always pass `-a` explicitly when creating or assigning.
+`tq` does not auto-assign to the git user. Always pass `-A` explicitly when creating or editing.
 
 ### Closing or cancelling a parent
 
-Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) with the same resolution as the parent. Already-closed descendants are left alone. Each affected ID is printed on its own line in write order.
+Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) along with the parent. Already-terminal descendants are left alone. Each affected ID is printed on its own line in write order.
 
 ### Checkbox glyphs in `tq ls`
 
-`[ ]` open, `[/]` in_progress, `[x]` closed-completed, `[~]` closed-cancelled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "closed".
+`[ ]` open, `[/]` in_progress, `[x]` closed, `[~]` canceled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "terminal".
 
 ### Listing shows tree context
 
@@ -189,16 +203,17 @@ tq close <id>                  # done
 ### Breaking down an epic
 
 ```bash
-epic=$(tq create "Auth system" -t epic -a claude)
-schema=$(tq create "Design auth schema" --parent "$epic" -a claude)
-oauth=$(tq create "Implement OAuth" --parent "$epic" -a claude)
-tq dep "$oauth" "$schema"     # OAuth depends on schema
+epic=$(tq create "Auth system" -t epic -A claude)
+schema=$(tq create "Design auth schema" --parent "$epic" -A claude)
+oauth=$(tq create "Implement OAuth" --parent "$epic" --dep "$schema" -A claude)
 ```
+
+(Or set the dep afterwards: `tq edit "$oauth" --dep "$schema"`.)
 
 ### Checking progress
 
 ```bash
 tq ls --blocked                # what's stuck?
-tq deps <epic-id>             # visualize dependency graph
-tq ls --completed --limit 5   # recently finished
+tq deps <epic-id>              # visualize dependency graph
+tq ls --status closed --limit 5  # recently finished
 ```

@@ -21,12 +21,25 @@ _LIST_FIELDS = {"deps", "links", "tags"}
 # -- Nullable scalar fields (serialized as "null" when None) --
 _NULLABLE_FIELDS = {"assignee", "parent", "xref"}
 
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-store requirement=ticket-file-format
+# Intent: single source of truth for status vocabulary. v1.2 renames the
+#   terminal `completed` → `closed` so the stored value matches the verb (`close`).
+class Status:
+    OPEN: T.Final = "open"
+    IN_PROGRESS: T.Final = "in_progress"
+    CLOSED: T.Final = "closed"
+    CANCELED: T.Final = "canceled"
+    ALL: T.Final[tuple[str, ...]] = ("open", "in_progress", "closed", "canceled")
+    TERMINAL: T.Final[frozenset[str]] = frozenset({"closed", "canceled"})
+
+
 # -- Terminal statuses (no further lifecycle transitions expected) --
-TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "canceled"})
+TERMINAL_STATUSES: frozenset[str] = Status.TERMINAL
 
 
 def is_terminal(t: "Ticket") -> bool:
-    return t.status in TERMINAL_STATUSES
+    return t.status in Status.TERMINAL
 
 
 # ── Exceptions ──────────────────────────────────────────────
@@ -53,6 +66,62 @@ class AmbiguousIDError(ValueError):
 # [AI]
 # Context: ticket-store requirement=ticket-file-format
 # Intent: single dataclass holding all frontmatter fields plus optional body
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-edit
+# Intent: single shape carrying the field-changes from one `create` or `edit`
+#   invocation. Both surfaces parse argparse into this, then call
+#   `apply_field_changes`. Single dispatch path = one round of validation.
+@dataclasses.dataclass
+class FieldChanges:
+    title: str | None = None
+    description: str | None = None
+    type: str | None = None
+    priority: int | None = None
+    assignee: str | None = None
+    xref: str | None = None
+    parent: str | None = None
+    add_tags: list[str] = dataclasses.field(default_factory=list)
+    remove_tags: list[str] = dataclasses.field(default_factory=list)
+    add_deps: list[str] = dataclasses.field(default_factory=list)
+    remove_deps: list[str] = dataclasses.field(default_factory=list)
+    add_links: list[str] = dataclasses.field(default_factory=list)
+    remove_links: list[str] = dataclasses.field(default_factory=list)
+    notes: list[str] = dataclasses.field(default_factory=list)
+    unset_fields: set[str] = dataclasses.field(default_factory=set)
+
+    def is_empty(self) -> bool:
+        """True if no actual change was requested."""
+        return (
+            self.title is None
+            and self.description is None
+            and self.type is None
+            and self.priority is None
+            and self.assignee is None
+            and self.xref is None
+            and self.parent is None
+            and not self.add_tags
+            and not self.remove_tags
+            and not self.add_deps
+            and not self.remove_deps
+            and not self.add_links
+            and not self.remove_links
+            and not self.notes
+            and not self.unset_fields
+        )
+
+    def conflicting_set_and_unset(self) -> list[str]:
+        """Fields that are both set and listed in `unset_fields`."""
+        conflicts: list[str] = []
+        for field in self.unset_fields:
+            if field == "parent" and self.parent is not None:
+                conflicts.append("parent")
+            elif field == "xref" and self.xref is not None:
+                conflicts.append("xref")
+            elif field == "assignee" and self.assignee is not None:
+                conflicts.append("assignee")
+        return conflicts
+
+
 @dataclasses.dataclass
 class Ticket:
     id: str
@@ -304,6 +373,243 @@ def list_ticket_ids(
     active = {p.stem for p in tickets_dir.glob("*.md")}
     archived = {p.stem for p in (tickets_dir / "archive").glob("*.md")}
     return sorted(active | archived)
+
+
+# ── Cycle detection ─────────────────────────────────────────
+
+
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-relationships requirement=cycle-detection
+# Intent: dependency cycle detection. Lifted from the old `relationships`
+#   command module so `edit --dep` / `create --dep` can use it.
+def build_dep_graph(tickets_dir: Path) -> dict[str, list[str]]:
+    graph: dict[str, list[str]] = {}
+    for path in tickets_dir.glob("*.md"):
+        tid = path.stem
+        t = read_ticket(tid, tickets_dir)
+        graph[tid] = list(t.deps)
+    return graph
+
+
+def has_dep_cycle(
+    graph: dict[str, list[str]],
+    source: str,
+    new_deps: list[str],
+) -> bool:
+    original = graph.get(source, [])
+    graph[source] = list(set(original + new_deps))
+    visited: set[str] = set()
+    stack: list[str] = list(new_deps)
+    while stack:
+        node = stack.pop()
+        if node == source:
+            graph[source] = original
+            return True
+        if node in visited:
+            continue
+        visited.add(node)
+        stack.extend(graph.get(node, []))
+    graph[source] = original
+    return False
+
+
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-relationships requirement=cycle-detection
+# Intent: parent cycle detection. Walk from `new_parent` up via `.parent`;
+#   if we ever land on `child_id` (or back on `new_parent` itself via a
+#   pre-existing cycle), it's a cycle.
+def has_parent_cycle(
+    child_id: str,
+    new_parent: str,
+    tickets_dir: Path,
+) -> bool:
+    if child_id == new_parent:
+        return True
+    visited: set[str] = set()
+    cursor: str | None = new_parent
+    while cursor is not None:
+        if cursor == child_id:
+            return True
+        if cursor in visited:
+            return False  # pre-existing cycle in ancestors, not ours
+        visited.add(cursor)
+        try:
+            t = read_ticket(cursor, tickets_dir)
+        except TicketNotFoundError:
+            return False
+        cursor = t.parent
+    return False
+
+
+# ── Field-change application ────────────────────────────────
+
+
+class FieldChangeError(ValueError):
+    """Raised when `apply_field_changes` rejects the requested changes."""
+    pass
+
+
+def _append_note(ticket: Ticket, text: str, timestamp: str) -> None:
+    """Append a timestamped note to the ticket's body."""
+    note_line = f"- {timestamp}: {text}"
+    if ticket.description is None:
+        ticket.description = ""
+    body = ticket.description
+    if "## Notes" in body:
+        ticket.description = body.rstrip() + "\n" + note_line + "\n"
+    else:
+        sep = "\n\n" if body.strip() else ""
+        ticket.description = body.rstrip() + sep + "## Notes\n\n" + note_line + "\n"
+
+
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-edit
+# Intent: apply a FieldChanges to an in-memory Ticket. Validates cycles,
+#   resolves dep/link/parent targets exist, handles symmetric link writes.
+#   Returns a list of (ticket, dir) writes the caller must perform; the
+#   caller writes them atomically (all-or-nothing).
+def apply_field_changes(
+    ticket: Ticket,
+    changes: FieldChanges,
+    tickets_dir: Path,
+    *,
+    note_timestamp: str | None = None,
+) -> list[Ticket]:
+    """Mutate `ticket` per `changes`. Return additional tickets that must
+    also be written (for symmetric link/unlink). Raises FieldChangeError
+    on validation failure; on failure no ticket has been mutated yet.
+    """
+    # Validate first (no mutation) — atomicity
+    conflicts = changes.conflicting_set_and_unset()
+    if conflicts:
+        raise FieldChangeError(
+            f"cannot both set and unset {', '.join(repr(f) for f in conflicts)} in one call"
+        )
+
+    # [AI]
+    # Context: id-resolution requirement=id-resolution-across-commands
+    # Intent: callers pass partial IDs for --dep/--link/--parent/--undep/--unlink
+    #   values. Resolve them to full IDs here so the rest of this function (and
+    #   the on-disk representation) sees canonical IDs only.
+    def _resolve(partial: str) -> str:
+        try:
+            return resolve_id(partial, tickets_dir)
+        except (TicketNotFoundError, AmbiguousIDError) as exc:
+            raise FieldChangeError(str(exc)) from exc
+
+    # Removal targets stay as-is if not resolvable; they're filtered against
+    # the ticket's actual deps/links downstream, so an unknown ID is a no-op.
+    def _resolve_optional(partial: str) -> str:
+        try:
+            return resolve_id(partial, tickets_dir)
+        except (TicketNotFoundError, AmbiguousIDError):
+            return partial
+
+    changes.add_deps = [_resolve(d) for d in changes.add_deps]
+    changes.remove_deps = [_resolve_optional(d) for d in changes.remove_deps]
+    changes.add_links = [_resolve(link) for link in changes.add_links]
+    changes.remove_links = [_resolve_optional(link) for link in changes.remove_links]
+    if changes.parent is not None:
+        changes.parent = _resolve(changes.parent)
+
+    # Load link targets (existence already proven by resolve)
+    link_targets: dict[str, Ticket] = {}
+    for link_id in changes.add_links:
+        if link_id == ticket.id:
+            continue
+        link_targets[link_id] = read_ticket(link_id, tickets_dir)
+    unlink_targets: dict[str, Ticket] = {}
+    for link_id in changes.remove_links:
+        if link_id == ticket.id:
+            continue
+        unlink_targets[link_id] = read_ticket(link_id, tickets_dir)
+
+    # Parent cycle check (existence already proven by resolve)
+    if changes.parent is not None:
+        if has_parent_cycle(ticket.id, changes.parent, tickets_dir):
+            raise FieldChangeError(
+                f"setting parent of '{ticket.id}' to '{changes.parent}' would create a cycle"
+            )
+
+    # Dep cycle check
+    new_deps_set = [d for d in changes.add_deps if d not in ticket.deps]
+    if new_deps_set:
+        graph = build_dep_graph(tickets_dir)
+        if has_dep_cycle(graph, ticket.id, new_deps_set):
+            raise FieldChangeError(
+                f"adding dependency to '{ticket.id}' would create a cycle"
+            )
+
+    # ── Mutations (validation passed) ──
+    if changes.title is not None:
+        ticket.title = changes.title
+    if changes.description is not None:
+        ticket.description = changes.description
+    if changes.type is not None:
+        ticket.type = changes.type
+    if changes.priority is not None:
+        ticket.priority = changes.priority
+    if changes.assignee is not None:
+        ticket.assignee = changes.assignee
+    if changes.xref is not None:
+        ticket.xref = changes.xref
+    if changes.parent is not None:
+        ticket.parent = changes.parent
+
+    # Tag add/remove
+    existing_tags = set(ticket.tags)
+    for tag in changes.add_tags:
+        if tag not in existing_tags:
+            ticket.tags.append(tag)
+            existing_tags.add(tag)
+    if changes.remove_tags:
+        to_remove = set(changes.remove_tags)
+        ticket.tags = [t for t in ticket.tags if t not in to_remove]
+
+    # Dep add/remove
+    existing_deps = set(ticket.deps)
+    for dep in changes.add_deps:
+        if dep not in existing_deps:
+            ticket.deps.append(dep)
+            existing_deps.add(dep)
+    if changes.remove_deps:
+        to_remove = set(changes.remove_deps)
+        ticket.deps = [d for d in ticket.deps if d not in to_remove]
+
+    # Link add/remove (symmetric)
+    extra_writes: list[Ticket] = []
+    existing_links = set(ticket.links)
+    for link_id, target in link_targets.items():
+        if link_id not in existing_links:
+            ticket.links.append(link_id)
+            existing_links.add(link_id)
+        if ticket.id not in target.links:
+            target.links.append(ticket.id)
+            extra_writes.append(target)
+    if changes.remove_links:
+        to_remove = set(changes.remove_links)
+        ticket.links = [link for link in ticket.links if link not in to_remove]
+        for link_id, target in unlink_targets.items():
+            if ticket.id in target.links:
+                target.links.remove(ticket.id)
+                if target not in extra_writes:
+                    extra_writes.append(target)
+
+    # Unset
+    if "parent" in changes.unset_fields:
+        ticket.parent = None
+    if "xref" in changes.unset_fields:
+        ticket.xref = None
+    if "assignee" in changes.unset_fields:
+        ticket.assignee = None
+
+    # Notes
+    if changes.notes:
+        ts = note_timestamp or datetime.now(timezone.utc).isoformat()
+        for note in changes.notes:
+            _append_note(ticket, note, ts)
+
+    return extra_writes
 
 
 # ── ID resolution ──────────────────────────────────────────

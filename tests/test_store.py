@@ -370,7 +370,7 @@ class TestWriteTicket:
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        for status in ("open", "in_progress", "completed", "canceled"):
+        for status in ("open", "in_progress", "closed", "canceled"):
             t = Ticket(id=f"proj-{status[:4]}", title="T", status=status)
             write_ticket(t, tickets_dir)
             content = (tickets_dir / f"proj-{status[:4]}.md").read_text()
@@ -499,6 +499,51 @@ class TestNullableFieldsRoundtrip:
         assert loaded.assignee is None
         assert loaded.parent is None
         assert loaded.xref is None
+
+    # spec: ticket-store requirement=ticket-file-format scenario=nullable-fields-absent-after-being-cleared
+    def test_assignee_absent_after_unset_via_edit(self, tmp_path: Path) -> None:
+        """tq edit <id> --unset assignee must remove the assignee field entirely."""
+        import os
+        import subprocess
+        from tiquette.store import Ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(Ticket(id="t-001", title="Has assignee", assignee="Alice"), tickets_dir)
+
+        run_env = os.environ.copy()
+        run_env["TICKETS_DIR"] = str(tickets_dir)
+        result = subprocess.run(
+            ["uv", "run", "tq", "edit", "t-001", "--unset", "assignee"],
+            capture_output=True, text=True, env=run_env,
+        )
+        assert result.returncode == 0, result.stderr
+        content = (tickets_dir / "t-001.md").read_text()
+        # Only check the frontmatter (between --- markers) so the title
+        # "Has assignee" doesn't false-positive the substring check.
+        frontmatter = content.split("---")[1]
+        assert "assignee" not in frontmatter
+
+    # spec: ticket-store requirement=ticket-file-format scenario=closed-status-uses-closed-not-completed
+    def test_closed_status_written_as_closed(self, tmp_path: Path) -> None:
+        import os
+        import subprocess
+        from tiquette.store import Ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(Ticket(id="t-close", title="To close"), tickets_dir)
+
+        run_env = os.environ.copy()
+        run_env["TICKETS_DIR"] = str(tickets_dir)
+        result = subprocess.run(
+            ["uv", "run", "tq", "close", "t-close"],
+            capture_output=True, text=True, env=run_env,
+        )
+        assert result.returncode == 0, result.stderr
+        content = (tickets_dir / "t-close.md").read_text()
+        assert "status: closed" in content
+        assert "status: completed" not in content
 
     def test_nonexistent_id_error(self, tmp_path: Path) -> None:
         from tiquette.store import Ticket, TicketNotFoundError, resolve_id, write_ticket

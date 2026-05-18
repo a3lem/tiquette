@@ -5,46 +5,31 @@ import sys
 import typing as T
 from pathlib import Path
 
+from tiquette.commands._fields import add_create_flags, namespace_to_field_changes
 from tiquette.store import (
+    FieldChangeError,
+    Status,
     Ticket,
     TicketNotFoundError,
     TicketsNotFoundError,
+    apply_field_changes,
     find_tickets_dir,
     generate_id,
     is_terminal,
     read_ticket,
+    resolve_id,
     write_ticket,
 )
 
 
-# [AI] Lifecycle commands: create, start, close, cancel, reopen.
-# Each handler is a stub that validates args and exits 0.
-
-VALID_TYPES = ("bug", "feature", "task", "epic", "chore")
-VALID_PRIORITIES = ("0", "1", "2", "3", "4")
-
-
 def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
-    # [AI] create: optional title positional, many optional flags
-    p_create = subparsers.add_parser("create", help="Create ticket, prints ID")
-    p_create.add_argument("title", nargs="?", default=None, help="Ticket title")
-    p_create.add_argument("-d", "--description", default=None, help="Body content")
-    p_create.add_argument(
-        "-t", "--type", default="task", choices=VALID_TYPES,
-        help="Type (bug|feature|task|epic|chore)",
-    )
-    p_create.add_argument(
-        "-p", "--priority", default="2", choices=VALID_PRIORITIES,
-        help="Priority 0-4, 0=highest",
-    )
     # [AI]
-    # Context: create-rename-assignee-short-flag -- ticket-lifecycle requirement=create-ticket
-    # Intent: -A short flag matches `tq ls -A`; -a previously held this slot
-    p_create.add_argument("-A", "--assignee", default=None, help="Assignee")
-    p_create.add_argument("--xref", default=None, help="External reference")
-    p_create.add_argument("--parent", default=None, help="Parent ticket ID")
-    p_create.add_argument("--tag", action="append", default=None, help="Tag (repeat for multiple)")
-    p_create.add_argument("--dep", action="append", default=None, help="Blocker ID (repeat for multiple)")
+    # Context: cli-redesign-v1.2 -- ticket-lifecycle requirement=create-ticket
+    # Intent: title is required positional. Field-flags come from the shared
+    #   _fields schema so `create` and `edit` stay in lockstep.
+    p_create = subparsers.add_parser("create", help="Create ticket, prints ID")
+    p_create.add_argument("title", help="Ticket title")
+    add_create_flags(p_create)
     p_create.set_defaults(func=_handle_create)
 
     # [AI]
@@ -53,7 +38,7 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     #   start/reopen stay flagless.
     for name, helptext in [
         ("start", "Set status to in_progress"),
-        ("close", "Set status to completed"),
+        ("close", "Set status to closed"),
         ("cancel", "Set status to canceled"),
         ("reopen", "Set status to open"),
     ]:
@@ -68,37 +53,39 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
 
 
 # [AI]
-# Context: ticket-lifecycle requirement=create-ticket, requirement=tickets-directory-auto-creation
-# Intent: create ticket file, auto-create .tickets/ on demand, print ID to stdout
+# Context: cli-redesign-v1.2 -- ticket-lifecycle requirement=create-ticket
+# Intent: create a fresh ticket then route through the shared
+#   apply_field_changes pipeline. The note timestamp is the same UTC
+#   instant as the ticket's `created` field (one clock read per call).
 def _handle_create(args: argparse.Namespace) -> None:
+    from datetime import datetime, timezone
     from pathlib import Path
-
-    from tiquette.store import TicketsNotFoundError
 
     try:
         tickets_dir = find_tickets_dir()
     except TicketsNotFoundError:
         tickets_dir = Path.cwd() / ".tickets"
-
-    # Auto-create .tickets/ on demand for create command
     tickets_dir.mkdir(parents=True, exist_ok=True)
 
+    now = datetime.now(timezone.utc).isoformat()
     ticket_id = generate_id(tickets_dir)
-    title = args.title if args.title is not None else "Untitled"
+    ticket = Ticket(id=ticket_id, title=args.title, created=now)
 
-    ticket = Ticket(
-        id=ticket_id,
-        title=title,
-        type=args.type,
-        priority=int(args.priority),
-        assignee=args.assignee,
-        xref=args.xref,
-        parent=args.parent,
-        tags=args.tag or [],
-        deps=args.dep or [],
-        description=args.description,
-    )
+    changes = namespace_to_field_changes(args, edit_mode=False)
+    # Defaults: only apply when the user didn't pass the flag.
+    if changes.type is None:
+        changes.type = "task"
+    if changes.priority is None:
+        changes.priority = 2
 
+    try:
+        extra = apply_field_changes(ticket, changes, tickets_dir, note_timestamp=now)
+    except FieldChangeError as exc:
+        sys.stderr.write(f"error: {exc}\n")
+        sys.exit(1)
+
+    for other in extra:
+        write_ticket(other, tickets_dir)
     write_ticket(ticket, tickets_dir)
     sys.stdout.write(ticket_id + "\n")
 
@@ -155,7 +142,8 @@ def _handle_status(args: argparse.Namespace) -> None:
         return
 
     try:
-        ticket = read_ticket(args.id, tickets_dir)
+        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket = read_ticket(ticket_id, tickets_dir)
     except TicketNotFoundError as exc:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
@@ -164,14 +152,15 @@ def _handle_status(args: argparse.Namespace) -> None:
     assert command in ("start", "close", "cancel", "reopen"), f"unexpected: {command}"
 
     if command == "start":
-        ticket.status = "in_progress"
+        ticket.status = Status.IN_PROGRESS
     elif command in ("close", "cancel"):
         # [AI]
-        # Context: split-closed-status -- ticket-lifecycle requirements=close-command,cancel-command
+        # Context: cli-redesign-v1.2 -- ticket-lifecycle requirements=close-command,cancel-command
         # Intent: shared descendant rejection + optional force-cascade. The terminal
-        #   status ("completed" vs "canceled") is set directly on each ticket; no
-        #   resolution field is written.
-        terminal_status = "completed" if command == "close" else "canceled"
+        #   status (`closed` for close, `canceled` for cancel) is set directly on
+        #   each ticket; no resolution field is written. v1.2 renamed `completed`
+        #   → `closed` so the stored value matches the verb.
+        terminal_status = Status.CLOSED if command == "close" else Status.CANCELED
         open_desc = _find_open_descendants(ticket.id, tickets_dir)
         if open_desc and not args.force:
             desc_list = ", ".join(open_desc)
@@ -194,7 +183,7 @@ def _handle_status(args: argparse.Namespace) -> None:
         return
 
     if command == "reopen":
-        ticket.status = "open"
+        ticket.status = Status.OPEN
 
     write_ticket(ticket, tickets_dir)
     # [AI]

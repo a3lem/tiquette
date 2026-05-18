@@ -35,7 +35,7 @@ If a matching ticket exists, use it. If not, create one. Trivial one-shot change
 | **Statuses** | `open` → `in_progress` → `closed` (via `start`/`close`/`cancel`) |
 | **Priority** | 0–4, 0 is highest. Default 2. |
 | **Types** | `bug`, `feature`, `task`, `epic`, `chore`. Default `task`. |
-| **Resolution** | `completed` (via `close`) or `canceled` (via `cancel`) |
+| **Terminal status** | `closed` (via `close`) or `canceled` (via `cancel`) |
 | **Dependencies** | Directed: "A depends on B" means B blocks A |
 | **Links** | Symmetric, informational only (don't affect blocking) |
 
@@ -45,6 +45,17 @@ If a matching ticket exists, use it. If not, create one. Trivial one-shot change
 {{ help_text }}```
 
 ## Things --help Won't Tell You
+
+### Always write a description
+
+Pass `-d "..."` on `tq create` for anything that will outlive the current task. Titles get terse fast -- "fix parser bug" is meaningless a week later. The description is the only place to anchor the ticket in its original context: what prompted it, what the user actually said, links to relevant files or PRs, what "done" looks like.
+
+```bash
+tq create "Fix parser dropping trailing commas" \
+  -d "User reported on 2026-05-04 that comma-trailing JSON5 inputs raise. See parser.py:142. Done = round-trip test passes for trailing commas in arrays and objects."
+```
+
+The only time it's safe to skip `-d`: short-lived subtasks created during a single session where the parent ticket or surrounding conversation already carries the context, and you expect to close them the same day.
 
 ### Editing fields not covered by a command
 
@@ -61,25 +72,21 @@ Parents are implicitly blocked by open children, even without explicit deps. Thi
 
 Parenting is not restricted by type. A `task` can have subtasks, a `feature` can have child bugs, etc. By convention `epic` groups `feature`s, but that's a convention, not a constraint -- reach for `epic` only when you actually want an epic-sized container, not just because a ticket has children.
 
-### Nest argument order
+### Parenting via `tq edit`
 
-`nest` follows `mv` convention: last argument is the destination (parent).
-
-```bash
-tq nest child1 child2 parent   # both children move under parent
-```
+There is no `tq nest`. Move a ticket under a parent with `tq edit <child> --parent <parent>`. For multiple children, run one `edit` per child (or a shell loop). Clear a parent with `tq edit <child> --unset parent`.
 
 ### No assignee default
 
-`tq` does not auto-assign to the git user. Always pass `-a` explicitly when creating or assigning.
+`tq` does not auto-assign to the git user. Always pass `-A` explicitly when creating or editing.
 
 ### Closing or cancelling a parent
 
-Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) with the same resolution as the parent. Already-closed descendants are left alone. Each affected ID is printed on its own line in write order.
+Both `tq close` and `tq cancel` reject a ticket with open descendants. Pass `-f` / `--force` to cascade through the subtree -- every open descendant is closed (or cancelled) along with the parent. Already-terminal descendants are left alone. Each affected ID is printed on its own line in write order.
 
 ### Checkbox glyphs in `tq ls`
 
-`[ ]` open, `[/]` in_progress, `[x]` closed-completed, `[~]` closed-cancelled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "closed".
+`[ ]` open, `[/]` in_progress, `[x]` closed, `[~]` canceled. The tilde is a deliberate strikethrough cue -- match both `[x]` and `[~]` if you're parsing for "terminal".
 
 ### Listing shows tree context
 
@@ -112,16 +119,17 @@ tq close <id>                  # done
 ### Breaking down an epic
 
 ```bash
-epic=$(tq create "Auth system" -t epic -a claude)
-schema=$(tq create "Design auth schema" --parent "$epic" -a claude)
-oauth=$(tq create "Implement OAuth" --parent "$epic" -a claude)
-tq dep "$oauth" "$schema"     # OAuth depends on schema
+epic=$(tq create "Auth system" -t epic -A claude)
+schema=$(tq create "Design auth schema" --parent "$epic" -A claude)
+oauth=$(tq create "Implement OAuth" --parent "$epic" --dep "$schema" -A claude)
 ```
+
+(Or set the dep afterwards: `tq edit "$oauth" --dep "$schema"`.)
 
 ### Checking progress
 
 ```bash
 tq ls --blocked                # what's stuck?
-tq deps <epic-id>             # visualize dependency graph
-tq ls --completed --limit 5   # recently finished
+tq deps <epic-id>              # visualize dependency graph
+tq ls --status closed --limit 5  # recently finished
 ```

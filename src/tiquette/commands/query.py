@@ -24,7 +24,23 @@ from tiquette.store import (
 # [AI] Query commands: show, info, path, deps, ls, tags, archive.
 # ls has complex filtering with validation and mutual exclusion.
 
-VALID_STATUSES = ("open", "in_progress", "completed", "canceled")
+VALID_STATUSES = ("open", "in_progress", "closed", "canceled")
+
+
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-query requirement=list-tickets
+# Intent: reject the legacy `completed` spelling with a message that points
+#   the user at the new spelling AND at autofix (which migrates on-disk data).
+def _validate_status(value: str) -> str:
+    if value == "completed":
+        raise argparse.ArgumentTypeError(
+            "'completed' is no longer a valid status; use 'closed' instead (run `tq autofix` to migrate existing tickets)"
+        )
+    if value not in VALID_STATUSES:
+        raise argparse.ArgumentTypeError(
+            f"invalid choice: {value!r} (choose from {', '.join(repr(s) for s in VALID_STATUSES)})"
+        )
+    return value
 VALID_SORTS = ("priority", "mtime")
 
 
@@ -66,8 +82,8 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # [AI] ls: many optional filters, mutual exclusion for --ready/--blocked
     p_ls = subparsers.add_parser("ls", help="List tickets")
     p_ls.add_argument(
-        "-s", "--status", choices=VALID_STATUSES,
-        help="Filter by status (open|in_progress|completed|canceled)",
+        "-s", "--status", type=_validate_status,
+        help="Filter by status (open|in_progress|closed|canceled)",
     )
 
     ready_group = p_ls.add_mutually_exclusive_group()
@@ -92,7 +108,10 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # Context: ls-archived-flags -- ticket-query requirement=list-tickets
     # Intent: -A is short for --assignee (was -a, now freed for --all); -T avoids -t conflict
     p_ls.add_argument("-A", "--assignee", help="Filter by assignee")
-    p_ls.add_argument("-T", "--tag", help="Filter by tag")
+    # [AI]
+    # Context: cli-redesign-v1.2 -- ticket-query requirement=list-tickets
+    # Intent: drop the `-T` short for `--tag`. `--tag` is short enough.
+    p_ls.add_argument("--tag", help="Filter by tag")
     p_ls.add_argument("--type", help="Filter by type")
 
     # [AI]
@@ -124,7 +143,7 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_links.set_defaults(func=_handle_links)
 
     # archive (no args)
-    p_archive = subparsers.add_parser("archive", help="Move completed and canceled tickets to archive")
+    p_archive = subparsers.add_parser("archive", help="Move closed and canceled tickets to archive")
     p_archive.set_defaults(func=_handle_archive)
 
 
@@ -152,15 +171,16 @@ def _load_all_tickets(
 
 
 # [AI]
-# Context: split-closed-status -- ticket-query requirement=list-ticket-line-format
-# Intent: glyph keyed on status alone; completed=[x], canceled=[~]
+# Context: cli-redesign-v1.2 -- ticket-query requirement=list-ticket-line-format
+# Intent: glyph keyed on status alone; closed=[x], canceled=[~]. v1.2 renamed
+#   `completed` → `closed`.
 def _checkbox(t: Ticket) -> str:
     match t.status:
         case "open":
             return "[ ]"
         case "in_progress":
             return "[/]"
-        case "completed":
+        case "closed":
             return "[x]"
         case "canceled":
             return "[~]"
@@ -783,7 +803,7 @@ def _handle_archive(args: argparse.Namespace) -> None:
     terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t)}
 
     if not terminal_ids:
-        print("No completed or canceled tickets to archive")
+        print("No closed or canceled tickets to archive")
         return
 
     archivable = set(terminal_ids)
@@ -803,7 +823,7 @@ def _handle_archive(args: argparse.Namespace) -> None:
         sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(refs)}\n")
 
     if not archivable:
-        print("No completed or canceled tickets eligible for archiving")
+        print("No closed or canceled tickets eligible for archiving")
         return
 
     archive_dir = tickets_dir / "archive"

@@ -65,6 +65,62 @@ This documents all behavioral changes from the original bash `ticket` (`tk`) CLI
 - `query`/`query-all` plugins replaced by `--jsonl` on `ls` and `--json` on `show`/`info`
 - Help output organized into sections: Lifecycle, Relationships, Fields, Content, Query, Plumbing
 
+## v1.1 → v1.2 (0.1.x → 0.2.0)
+
+### Removed verbs (no aliases)
+
+`tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`,
+`assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`.
+
+Replacement: every one folds into `tq edit <id> [field-options]`. The
+field-options are the same vocabulary as `tq create`, plus the
+`edit`-only removers (`--title`, `--untag`, `--undep`, `--unlink`,
+`--unset`).
+
+| Old | New |
+|---|---|
+| `tq tag id foo bar` | `tq edit id --tag foo --tag bar` |
+| `tq untag id stale` | `tq edit id --untag stale` |
+| `tq dep id dep1 dep2` | `tq edit id --dep dep1 --dep dep2` |
+| `tq undep id dep1` | `tq edit id --undep dep1` |
+| `tq nest c1 c2 parent` | `tq edit c1 --parent parent` (then again for c2) |
+| `tq unnest id` | `tq edit id --unset parent` |
+| `tq link a b` | `tq edit a --link b` |
+| `tq unlink a b` | `tq edit a --unlink b` |
+| `tq assign id Alice` | `tq edit id -A Alice` |
+| `tq assign id` (clear) | `tq edit id --unset assignee` |
+| `tq change-prio id 0` | `tq edit id -p 0` |
+| `tq change-type id bug` | `tq edit id -t bug` |
+| `tq describe id "text"` | `tq edit id -d "text"` |
+| `tq add-note id "text"` | `tq edit id --note "text"` |
+| `tq xref id gh-1` | `tq edit id --xref gh-1` |
+| `tq xref id` (clear) | `tq edit id --unset xref` |
+
+### Status rename: `completed` → `closed`
+
+The verb is `close`, so the stored status is now `closed` too. The
+old `completed` value is migrated by `tq autofix` (unconditional, no
+flag). `tq ls --status completed` exits non-zero with a pointer at
+the new spelling and at `autofix`.
+
+The legacy `closed → completed/canceled` migrator that shipped in
+v0.1.4 is removed. If you have data that predates v0.1.4 (status
+`closed` with a `resolution` field), run `tq autofix` on v0.1.5
+**before** upgrading to v0.2.0 — v0.2.0's `autofix` is forward-only.
+
+### Create surface
+
+- `tq create <title>` — title is now required. No more implicit
+  "Untitled".
+- `tq create --link <id>` — symmetric, writes both sides.
+- `tq create --note <text>` — appends a timestamped note; multiple
+  notes in one call share a timestamp (the same UTC instant as the
+  ticket's `created` field).
+
+### Short-flag cleanup
+
+- `-T` short for `ls --tag` removed. Use `--tag`.
+
 ## Future (not v1)
 
 - `validate` command (lint pass: orphaned deps, malformed frontmatter, out-of-range values)

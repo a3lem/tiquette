@@ -1,6 +1,6 @@
 [project]
 name = "tiquette"
-version = "0.1.5"
+version = "0.2.0"
 description = "Minimal file-based ticket system with dependency tracking"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,6 +15,24 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "bump-my-version>=1.2.0",
     "pytest>=9.0.2",
     "pytest-xdist>=3.8.0",
 ]
+
+[tool.bumpversion]
+current_version = "0.2.0"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = 'version = "{current_version}"'
+replace = 'version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "src/tiquette/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

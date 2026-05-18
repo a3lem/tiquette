@@ -28,7 +28,7 @@ Add deps:
 3. `ls --parent <epic-id> --tag auth`. Should show the epic and all three direct task children (all tagged auth). "Write JWT helper" (no auth tag) should be excluded — but its parent "Design tokens" still appears.
 4. `ls --parent <design-tokens-id>`. Should show "Design tokens" at root with only "Write JWT helper" nested.
 5. `ls --parent <leaf-id>` (try a ticket with no children, e.g. "Write JWT helper"). Should show just that ticket at root, no nested rows.
-6. Close "Design tokens", then `ls --parent <epic-id> --ready`. "Implement login" and "Implement signup" should now appear under the epic.
+6. Close "Write JWT helper" (the only child of "Design tokens"), then close "Design tokens" itself, then run `ls --parent <epic-id> --ready`. "Implement login" and "Implement signup" should now appear under the epic (their dep is now `closed`, a terminal state). Note: closing "Design tokens" directly without first closing its child would fail with "has open descendants" -- use `tq close <design-tokens-id> -f` if you want to cascade.
 7. `ls --parent nonexistent`. Should exit non-zero with `ticket 'nonexistent' not found` on stderr.
 8. Try a partial ID, e.g. `ls --parent <first 3 chars of epic-id>`. Should resolve and behave the same as step 1.
 
@@ -39,7 +39,7 @@ Add deps:
 11. `ls --dep <design-tokens-id>` should NOT include "Update auth README" — it depends on "Implement login", not directly on "Design tokens" (transitive dependents are excluded).
 12. `ls --dep <write-jwt-helper-id>`. Nothing depends on it directly — output should be empty, exit 0.
 13. `ls --dep <design-tokens-id> --status open`. Should show both implementations (assuming they're still open).
-14. Mark "Implement login" completed, then `ls --dep <design-tokens-id> --status open`. Should show only "Implement signup".
+14. Run `tq close <implement-login-id>`, then `ls --dep <design-tokens-id> --status open`. Should show only "Implement signup".
 15. `ls --dep nonexistent`. Should exit non-zero with `ticket 'nonexistent' not found`.
 
 ### Mutual exclusion

@@ -16,12 +16,12 @@ Empty tickets directory.
 6. Add deps: D depends on A and B.
 7. Run `deps D`. Should show a tree with A and B as direct deps.
 8. Add dep: A depends on C. Run `deps D` again. Should show the transitive chain: D → A → C.
-9. Nest B under A (`nest B A`). Verify `show A` lists B as a child. Verify `show B` lists A as parent.
-10. Unnest B. Verify both sides are cleared.
+9. Parent B under A with `tq edit B --parent A`. Verify `show A` lists B as a child. Verify `show B` lists A as parent.
+10. Clear B's parent with `tq edit B --unset parent`. Verify both sides are cleared.
 
 ## What to watch for
 
 - Links are always symmetric: adding from one side shows on both.
 - Unlinking from one side removes from both.
 - `deps` shows transitive dependencies, not just direct ones.
-- `nest` and `unnest` update the parent field correctly.
+- `edit --parent` / `edit --unset parent` update the parent field correctly.

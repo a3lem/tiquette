@@ -47,14 +47,14 @@ The system SHALL resolve partial IDs to full ticket IDs by matching against all 
 
 Partial ID resolution SHALL work uniformly across all commands that accept ticket IDs.
 
-### Scenario: Partial ID with dep command
+### Scenario: Partial ID with edit --dep
 - Given tickets "dep-aaaa" and "dep-bbbb" exist
-- When the user runs `tq dep aaaa bbbb`
+- When the user runs `tq edit aaaa --dep bbbb`
 - Then the command exits 0
 - And ticket "dep-aaaa" has "dep-bbbb" in deps
 
-### Scenario: Partial ID with link command
+### Scenario: Partial ID with edit --link
 - Given tickets "link-cccc" and "link-dddd" exist
-- When the user runs `tq link cccc dddd`
+- When the user runs `tq edit cccc --link dddd`
 - Then the command exits 0
 - And ticket "link-cccc" has "link-dddd" in links

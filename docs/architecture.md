@@ -19,29 +19,30 @@ This is a reimplementation of [ticket](https://github.com/wedow/ticket), origina
 tiquette/
   src/tiquette/
     __init__.py
-    cli.py              # CLI entry point, argument parsing
+    cli.py              # CLI entry point, argument parsing, HELP_TEXT
     commands/           # Command implementations (one module per group)
+      _fields.py        # shared argparse schema for create + edit
       lifecycle.py      # create, start, close, cancel, reopen
-      relationships.py  # dep, undep, nest, unnest, link, unlink
-      fields.py         # assign, tag, prioritize, etc.
-      content.py        # describe, add-note
-      query.py          # show, info, path, ls, dep tree, tags, archive
-    ticket.py           # Ticket model (read/write YAML+markdown)
-    store.py            # Ticket store (find tickets dir, load/save, ID resolution)
-    plugins.py          # Plugin discovery and dispatch
+      edit.py           # the single post-creation mutation command
+      query.py          # show, info, path, ls, deps tree, tags, links, archive
+      validate.py       # validate
+      autofix.py        # autofix (prefix renames + status migrations)
+    store.py            # Ticket dataclass, FieldChanges, apply_field_changes,
+                        #   read/write, ID generation, cycle detection
   tests/
-    features/           # BDD feature files (behave)
-      steps/            # Step definitions
+    test_cli_*.py       # subprocess-based CLI tests
+    test_store.py       # in-process store tests
+    test-drives/        # human-runnable walkthroughs
   docs/
-    cli-design.md       # CLI interface specification
-    architecture.md     # This file
+    cli-design.md       # CLI interface spec (v1.2)
+    architecture.md     # this file
 ```
 
 ## Key Design Decisions
 
 ### CLI framework
 
-Use `argparse` (stdlib) for argument parsing. Subcommands via `add_subparsers`, grouped help output (Lifecycle, Relationships, etc.) via custom help formatter. Zero runtime dependencies.
+Use `argparse` (stdlib) for argument parsing. Subcommands via `add_subparsers`, grouped help output (Lifecycle, View, Maintenance) via a static `HELP_TEXT` string in `cli.py`. Zero runtime dependencies.
 
 ### Ticket as a model
 

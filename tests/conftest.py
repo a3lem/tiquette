@@ -21,8 +21,14 @@ def default_tickets_dir(tmp_path: Path) -> T.Iterator[str]:
     tickets_path = tmp_path / "_fixture_tickets"
     tickets_path.mkdir()
     # Simple fixtures
+    # [AI]
+    # Context: cli-redesign-v1.2 -- ticket-edit / ticket-lifecycle requirement=create-ticket
+    # Intent: v1.2 makes `create --dep` and `edit --dep` validate that the target
+    #   ticket exists, so the dep-* / d-* / p-* IDs referenced by argparse-shape
+    #   tests must be seeded here.
     for tid in ("t-001", "test-001", "test-0001", "child-001", "child-002",
-                 "parent-001", "show-001", "info-001"):
+                 "parent-001", "show-001", "info-001",
+                 "dep-001", "dep-002", "d-001", "p-001"):
         write_ticket(Ticket(id=tid, title="Fixture ticket"), tickets_path)
     # task-* fixtures with deps for undep arg tests
     write_ticket(Ticket(id="task-0001", title="Fixture", deps=["task-0002", "task-0003"]), tickets_path)

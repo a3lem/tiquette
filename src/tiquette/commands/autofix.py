@@ -113,66 +113,35 @@ def _apply_renames(
 
 
 # [AI]
-# Context: split-closed-status -- ticket-autofix requirement=migrate-legacy-closed-status
-# Intent: migrate tickets whose status is still "closed" to the new terminal statuses.
-#   Uses the legacy `resolution` field to decide the outcome, defaulting to "completed".
-#   Also strips stray `resolution` fields from tickets that are not `closed`.
-def _migrate_legacy_closed(dirs: list[Path]) -> tuple[int, int]:
-    """Return (migrated_count, stripped_count)."""
+# Context: cli-redesign-v1.2 -- ticket-autofix requirement=migrate-completed-status-to-closed
+# Intent: rewrite legacy `status: completed` to `status: closed`. v1.2 renames
+#   the terminal status so the stored value matches the verb (`close`).
+#   Unconditional: no flag, no opt-in. Idempotent (a second run finds zero
+#   completed tickets and does nothing).
+def _migrate_completed_to_closed(dirs: list[Path]) -> int:
+    """Return the count of tickets whose status was rewritten."""
     migrated = 0
-    stripped = 0
-
     for d in dirs:
         for path in sorted(d.glob("*.md")):
             content = path.read_text()
             parts = content.split("---\n")
             if len(parts) < 3:
                 continue
-
             fm_raw = parts[1]
             fm_lines = fm_raw.splitlines(keepends=True)
-
-            status_line: str | None = None
-            resolution_line: str | None = None
-            resolution_value: str | None = None
-
+            changed = False
+            new_lines: list[str] = []
             for line in fm_lines:
-                stripped_line = line.strip()
-                if stripped_line.startswith("status: "):
-                    status_line = stripped_line
-                elif stripped_line.startswith("resolution: "):
-                    resolution_line = stripped_line
-                    resolution_value = stripped_line.split("resolution: ", 1)[1].strip()
-
-            status = status_line.split("status: ", 1)[1].strip() if status_line else None
-
-            if status == "closed":
-                new_status = "canceled" if resolution_value == "canceled" else "completed"
-                new_lines: list[str] = []
-                for line in fm_lines:
-                    if line.strip().startswith("status: "):
-                        new_lines.append(f"status: {new_status}\n")
-                    elif line.strip().startswith("resolution: "):
-                        pass  # drop resolution field
-                    else:
-                        new_lines.append(line)
-                new_fm = "".join(new_lines)
-                parts[1] = new_fm
+                if line.strip() == "status: completed":
+                    new_lines.append("status: closed\n")
+                    changed = True
+                else:
+                    new_lines.append(line)
+            if changed:
+                parts[1] = "".join(new_lines)
                 path.write_text("---\n".join(parts))
                 migrated += 1
-
-            elif resolution_line is not None:
-                # Stray resolution field on a non-closed ticket
-                new_lines = [
-                    line for line in fm_lines
-                    if not line.strip().startswith("resolution: ")
-                ]
-                new_fm = "".join(new_lines)
-                parts[1] = new_fm
-                path.write_text("---\n".join(parts))
-                stripped += 1
-
-    return migrated, stripped
+    return migrated
 
 
 def _handle_autofix(args: argparse.Namespace) -> None:
@@ -189,13 +158,10 @@ def _handle_autofix(args: argparse.Namespace) -> None:
         noun = "ticket" if n == 1 else "tickets"
         fixes.append(f"Renamed {n} {noun} to current ID prefix")
 
-    migrated, stripped = _migrate_legacy_closed(dirs)
+    migrated = _migrate_completed_to_closed(dirs)
     if migrated:
         noun = "ticket" if migrated == 1 else "tickets"
-        fixes.append(f"Migrated {migrated} {noun} from closed status")
-    elif stripped:
-        noun = "ticket" if stripped == 1 else "tickets"
-        fixes.append(f"Stripped resolution from {stripped} {noun}")
+        fixes.append(f"Migrated {migrated} {noun} from completed status")
 
     if not fixes:
         print("No fixes needed")

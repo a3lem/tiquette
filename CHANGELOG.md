@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.0 – 2026-05-17
+
+- changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.
+- added: `tq edit <id> [field-options]` is the single post-creation mutation surface. Accepts every `create` field-option plus `--title`, `--untag`, `--undep`, `--unlink`, and `--unset {parent,xref,assignee}`. Setting and unsetting the same field in one call is rejected.
+- changed (BREAKING): terminal status renamed `completed` → `closed`. `tq close` now writes `status: closed`. The verb and stored value match.
+- added: `tq autofix` unconditionally rewrites legacy `status: completed` → `status: closed`. Idempotent.
+- changed (BREAKING): the legacy `closed → completed/canceled` autofix migrator (from v0.1.4) is removed; under v1.2 `closed` is again the terminal status. Users on pre-v0.1.4 data must run `autofix` on a v0.1.4/v0.1.5 release before upgrading.
+- changed (BREAKING): `tq create <title>` — title is now a required positional. The implicit "Untitled" default is gone.
+- added: `tq create --link <id>` (symmetric, repeatable) and `tq create --note <text>` (timestamped at creation, repeatable). Both also valid on `tq edit`.
+- changed (BREAKING): `tq ls --tag` short `-T` removed. Use `--tag`.
+- changed: `tq ls --status completed` now exits non-zero with a message pointing at `autofix` and the `closed` spelling.
+
 ## v0.1.5 – 2026-05-04
 
 - added: `tq ls --parent <id>` scopes the listing to a ticket and its transitive descendants, rendered as a tree rooted at `<id>`. The named root is shown as a context heading when it doesn't itself satisfy stacked filters. Stacks with all other filters.
