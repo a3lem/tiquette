@@ -640,7 +640,7 @@ def _validate_changes(
     #   the on-disk representation) sees canonical IDs only.
     def _resolve(partial: str) -> str:
         try:
-            return resolve_id(partial, tickets_dir)
+            return resolve_id_in_dir(partial, tickets_dir)
         except (TicketNotFoundError, AmbiguousIDError) as exc:
             raise FieldChangeError(str(exc)) from exc
 
@@ -648,7 +648,7 @@ def _validate_changes(
     # the ticket's actual deps/links downstream, so an unknown ID is a no-op.
     def _resolve_optional(partial: str) -> str:
         try:
-            return resolve_id(partial, tickets_dir)
+            return resolve_id_in_dir(partial, tickets_dir)
         except (TicketNotFoundError, AmbiguousIDError):
             return partial
 
@@ -804,9 +804,11 @@ def apply_field_changes(
 
 # [AI]
 # Context: id-resolution requirement=partial-id-matching
-# Intent: resolve partial IDs by exact match first, then unique substring
-def resolve_id(partial: str, tickets_dir: Path) -> str:
-    all_ids = sorted(p.stem for p in tickets_dir.glob("*.md"))
+# Intent: resolve partial IDs by exact match first, then unique substring.
+#   Accepts any iterable of candidate IDs so callers can scope to a pre-loaded
+#   set (e.g. archived+active combined) without another filesystem scan.
+def resolve_id(partial: str, candidates: Iterable[str]) -> str:
+    all_ids = sorted(candidates)
 
     # Exact match takes precedence unconditionally
     if partial in all_ids:
@@ -824,3 +826,8 @@ def resolve_id(partial: str, tickets_dir: Path) -> str:
     raise AmbiguousIDError(
         f"ambiguous ID '{partial}' matches multiple tickets: {matches}"
     )
+
+
+def resolve_id_in_dir(partial: str, tickets_dir: Path) -> str:
+    """Resolve a partial ticket ID against .md files in `tickets_dir`."""
+    return resolve_id(partial, (p.stem for p in tickets_dir.glob("*.md")))

@@ -18,7 +18,7 @@ from tiquette.store import (
     is_terminal,
     load_all_tickets,
     read_ticket,
-    resolve_id,
+    resolve_id_in_dir,
     write_ticket,
 )
 
@@ -144,7 +144,7 @@ def _handle_status(args: argparse.Namespace) -> None:
         return
 
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
         ticket = read_ticket(ticket_id, tickets_dir)
     except TicketNotFoundError as exc:
         sys.stderr.write(f"error: {exc}\n")

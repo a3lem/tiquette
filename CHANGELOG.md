@@ -12,6 +12,7 @@
 - changed: `apply_field_changes` split into `_validate_changes` + `_apply_validated`; validation and mutation are now structurally separate
 - added: `iter_tickets` and `load_all_tickets` in `store.py`; all glob-and-parse loops in lifecycle, autofix, validate, and query now route through them
 - improved: `_find_open_descendants` returns `dict[str, Ticket]`; `_handle_status` reuses those loaded tickets for the mutation pass instead of re-reading from disk
+- changed: `resolve_id` now accepts `Iterable[str]` candidates; `resolve_id_in_dir(partial, tickets_dir)` is the directory-based wrapper; `_resolve_in_set` in query.py removed
 
 ## v0.2.0 – 2026-05-17
 

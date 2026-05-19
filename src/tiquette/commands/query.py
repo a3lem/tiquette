@@ -20,6 +20,7 @@ from tiquette.store import (
     load_all_tickets,
     read_ticket,
     resolve_id,
+    resolve_id_in_dir,
 )
 
 
@@ -224,24 +225,6 @@ def _is_blocked(
 
 # [AI]
 # Context: ls-parent-and-dep-filters -- ticket-query requirement=list-filtered-by-parent
-# Intent: partial-ID resolution scoped to the loaded source set so that --archived/--all
-#   can resolve archived IDs without forking the global resolve_id signature.
-def _resolve_in_set(partial: str, all_tickets: dict[str, Ticket]) -> str:
-    all_ids = sorted(all_tickets.keys())
-    if partial in all_tickets:
-        return partial
-    matches = [tid for tid in all_ids if partial in tid]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) == 0:
-        raise TicketNotFoundError(f"ticket '{partial}' not found")
-    raise AmbiguousIDError(
-        f"ambiguous ID '{partial}' matches multiple tickets: {matches}"
-    )
-
-
-# [AI]
-# Context: ls-parent-and-dep-filters -- ticket-query requirement=list-filtered-by-parent
 # Intent: collect transitive descendants of `root_id` via parent pointers
 def _descendants_of(root_id: str, all_tickets: dict[str, Ticket]) -> set[str]:
     children_by_parent: dict[str, list[str]] = {}
@@ -276,7 +259,7 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
     except (TicketNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -362,7 +345,7 @@ def _handle_show(args: argparse.Namespace) -> None:
 def _handle_info(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
     except (TicketNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -408,7 +391,7 @@ def _handle_info(args: argparse.Namespace) -> None:
 def _handle_path(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
     except (TicketNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -426,7 +409,7 @@ def _handle_path(args: argparse.Namespace) -> None:
 def _handle_deps(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
     except (TicketNotFoundError, ValueError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -517,7 +500,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
             print(f"ticket '{raw_scope}' not found", file=sys.stderr)
             sys.exit(1)
         try:
-            scope_id = _resolve_in_set(raw_scope, all_tickets)
+            scope_id = resolve_id(raw_scope, all_tickets.keys())
         except (TicketNotFoundError, ValueError) as e:
             print(str(e), file=sys.stderr)
             sys.exit(1)

@@ -1,6 +1,7 @@
 """Tests for the ticket store layer.
 # spec: ticket-store
 """
+
 from __future__ import annotations
 
 import os
@@ -16,7 +17,9 @@ class TestFindTicketsDir:
     """Directory walking to locate .tickets/."""
 
     # spec: ticket-store requirement=directory-walking scenario=find-in-current-dir
-    def test_find_in_current_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_in_current_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from tiquette.store import find_tickets_dir
 
         monkeypatch.delenv("TICKETS_DIR", raising=False)
@@ -26,7 +29,9 @@ class TestFindTicketsDir:
         assert find_tickets_dir() == tickets
 
     # spec: ticket-store requirement=directory-walking scenario=find-in-parent-dir
-    def test_find_in_parent_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_in_parent_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from tiquette.store import find_tickets_dir
 
         monkeypatch.delenv("TICKETS_DIR", raising=False)
@@ -38,7 +43,9 @@ class TestFindTicketsDir:
         assert find_tickets_dir() == tickets
 
     # spec: ticket-store requirement=directory-walking scenario=find-in-grandparent-dir
-    def test_find_in_grandparent_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_find_in_grandparent_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from tiquette.store import find_tickets_dir
 
         monkeypatch.delenv("TICKETS_DIR", raising=False)
@@ -50,7 +57,9 @@ class TestFindTicketsDir:
         assert find_tickets_dir() == tickets
 
     # spec: ticket-store requirement=directory-walking scenario=env-var-takes-priority
-    def test_env_var_takes_priority(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_env_var_takes_priority(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from tiquette.store import find_tickets_dir
 
         # Create .tickets in tmp_path but point env elsewhere
@@ -62,7 +71,9 @@ class TestFindTicketsDir:
         assert find_tickets_dir() == override
 
     # spec: ticket-store requirement=directory-walking scenario=error-when-not-found
-    def test_error_when_not_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_error_when_not_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from tiquette.store import TicketsNotFoundError, find_tickets_dir
 
         monkeypatch.chdir(tmp_path)
@@ -341,7 +352,9 @@ class TestWriteTicket:
         content = (tickets_dir / "proj-0001.md").read_text()
         # Nullable fields must be absent when null, not written as "null"
         assert "assignee" not in content
-        assert "resolution" not in content  # resolution is removed from the schema entirely
+        assert (
+            "resolution" not in content
+        )  # resolution is removed from the schema entirely
         assert "parent" not in content
         assert "xref" not in content
 
@@ -352,8 +365,10 @@ class TestWriteTicket:
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         t = Ticket(
-            id="proj-0001", title="Test",
-            assignee="Alice", parent="parent-001",
+            id="proj-0001",
+            title="Test",
+            assignee="Alice",
+            parent="parent-001",
             xref="gh-42",
         )
         write_ticket(t, tickets_dir)
@@ -374,7 +389,9 @@ class TestWriteTicket:
             t = Ticket(id=f"proj-{status[:4]}", title="T", status=status)
             write_ticket(t, tickets_dir)
             content = (tickets_dir / f"proj-{status[:4]}.md").read_text()
-            assert "resolution" not in content, f"resolution appeared for status={status}"
+            assert "resolution" not in content, (
+                f"resolution appeared for status={status}"
+            )
 
 
 class TestReadTicket:
@@ -441,46 +458,51 @@ class TestResolveId:
     """
 
     def test_exact_match(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, resolve_id, write_ticket
+        from tiquette.store import Ticket, resolve_id_in_dir, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="test"), tickets_dir)
-        assert resolve_id("abc-1234", tickets_dir) == "abc-1234"
+        assert resolve_id_in_dir("abc-1234", tickets_dir) == "abc-1234"
 
     def test_partial_suffix(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, resolve_id, write_ticket
+        from tiquette.store import Ticket, resolve_id_in_dir, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="test"), tickets_dir)
-        assert resolve_id("1234", tickets_dir) == "abc-1234"
+        assert resolve_id_in_dir("1234", tickets_dir) == "abc-1234"
 
     def test_partial_prefix(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, resolve_id, write_ticket
+        from tiquette.store import Ticket, resolve_id_in_dir, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="test"), tickets_dir)
-        assert resolve_id("abc", tickets_dir) == "abc-1234"
+        assert resolve_id_in_dir("abc", tickets_dir) == "abc-1234"
 
     def test_partial_substring(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, resolve_id, write_ticket
+        from tiquette.store import Ticket, resolve_id_in_dir, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="test"), tickets_dir)
-        assert resolve_id("c-12", tickets_dir) == "abc-1234"
+        assert resolve_id_in_dir("c-12", tickets_dir) == "abc-1234"
 
     def test_ambiguous_id_error(self, tmp_path: Path) -> None:
-        from tiquette.store import AmbiguousIDError, Ticket, resolve_id, write_ticket
+        from tiquette.store import (
+            AmbiguousIDError,
+            Ticket,
+            resolve_id_in_dir,
+            write_ticket,
+        )
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="first"), tickets_dir)
         write_ticket(Ticket(id="abc-5678", title="second"), tickets_dir)
         with pytest.raises(AmbiguousIDError, match="ambiguous ID 'abc'"):
-            resolve_id("abc", tickets_dir)
+            resolve_id_in_dir("abc", tickets_dir)
 
 
 class TestNullableFieldsRoundtrip:
@@ -509,13 +531,17 @@ class TestNullableFieldsRoundtrip:
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
-        write_ticket(Ticket(id="t-001", title="Has assignee", assignee="Alice"), tickets_dir)
+        write_ticket(
+            Ticket(id="t-001", title="Has assignee", assignee="Alice"), tickets_dir
+        )
 
         run_env = os.environ.copy()
         run_env["TICKETS_DIR"] = str(tickets_dir)
         result = subprocess.run(
             ["uv", "run", "tq", "edit", "t-001", "--unset", "assignee"],
-            capture_output=True, text=True, env=run_env,
+            capture_output=True,
+            text=True,
+            env=run_env,
         )
         assert result.returncode == 0, result.stderr
         content = (tickets_dir / "t-001.md").read_text()
@@ -538,7 +564,9 @@ class TestNullableFieldsRoundtrip:
         run_env["TICKETS_DIR"] = str(tickets_dir)
         result = subprocess.run(
             ["uv", "run", "tq", "close", "t-close"],
-            capture_output=True, text=True, env=run_env,
+            capture_output=True,
+            text=True,
+            env=run_env,
         )
         assert result.returncode == 0, result.stderr
         content = (tickets_dir / "t-close.md").read_text()
@@ -546,19 +574,24 @@ class TestNullableFieldsRoundtrip:
         assert "status: completed" not in content
 
     def test_nonexistent_id_error(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, TicketNotFoundError, resolve_id, write_ticket
+        from tiquette.store import (
+            Ticket,
+            TicketNotFoundError,
+            resolve_id_in_dir,
+            write_ticket,
+        )
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="test"), tickets_dir)
         with pytest.raises(TicketNotFoundError, match="ticket 'nonexistent' not found"):
-            resolve_id("nonexistent", tickets_dir)
+            resolve_id_in_dir("nonexistent", tickets_dir)
 
     def test_exact_takes_precedence_over_substring(self, tmp_path: Path) -> None:
-        from tiquette.store import Ticket, resolve_id, write_ticket
+        from tiquette.store import Ticket, resolve_id_in_dir, write_ticket
 
         tickets_dir = tmp_path / ".tickets"
         tickets_dir.mkdir()
         write_ticket(Ticket(id="abc", title="exact"), tickets_dir)
         write_ticket(Ticket(id="abc-1234", title="longer"), tickets_dir)
-        assert resolve_id("abc", tickets_dir) == "abc"
+        assert resolve_id_in_dir("abc", tickets_dir) == "abc"

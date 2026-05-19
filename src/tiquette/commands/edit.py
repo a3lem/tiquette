@@ -2,6 +2,7 @@
 
 # spec: ticket-edit
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,7 +18,7 @@ from tiquette.store import (
     apply_field_changes,
     find_tickets_dir,
     read_ticket,
-    resolve_id,
+    resolve_id_in_dir,
     write_ticket,
 )
 
@@ -37,7 +38,7 @@ def _handle_edit(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     try:
-        ticket_id = resolve_id(args.id, tickets_dir)
+        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
         ticket = read_ticket(ticket_id, tickets_dir)
     except TicketNotFoundError as exc:
         sys.stderr.write(f"error: {exc}\n")
@@ -54,7 +55,9 @@ def _handle_edit(args: argparse.Namespace) -> None:
     note_ts = datetime.now(timezone.utc).isoformat() if changes.notes else None
 
     try:
-        extra = apply_field_changes(ticket, changes, tickets_dir, note_timestamp=note_ts)
+        extra = apply_field_changes(
+            ticket, changes, tickets_dir, note_timestamp=note_ts
+        )
     except FieldChangeError as exc:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
