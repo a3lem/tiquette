@@ -1,6 +1,6 @@
 ---
 id: tiqt-963a
-status: open
+status: closed
 type: bug
 priority: 2
 deps: []
