@@ -1,6 +1,6 @@
 ---
 id: tiqt-8d9f
-status: open
+status: closed
 type: bug
 priority: 2
 deps: []
