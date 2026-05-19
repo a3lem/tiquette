@@ -14,6 +14,7 @@
 - improved: `_find_open_descendants` returns `dict[str, Ticket]`; `_handle_status` reuses those loaded tickets for the mutation pass instead of re-reading from disk
 - changed: `resolve_id` now accepts `Iterable[str]` candidates; `resolve_id_in_dir(partial, tickets_dir)` is the directory-based wrapper; `_resolve_in_set` in query.py removed
 - added: `_resolve_or_exit` helper in query.py; replaces four identical try/except blocks around resolve_id_in_dir
+- fixed: `_is_blocked` now treats dangling (unknown) dep IDs as blocking, so `tq ls --ready` and `tq validate` agree on what is actionable
 
 ## v0.2.0 – 2026-05-17
 

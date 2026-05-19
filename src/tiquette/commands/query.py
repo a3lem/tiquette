@@ -224,7 +224,10 @@ def _is_blocked(
 ) -> bool:
     for dep_id in ticket.deps:
         dep = all_tickets.get(dep_id)
-        if dep and not is_terminal(dep.status):
+        if dep is None:
+            # Dangling dep: unknown ticket is treated as blocking.
+            return True
+        if not is_terminal(dep.status):
             return True
     for t in all_tickets.values():
         if t.parent == ticket.id and not is_terminal(t.status):
