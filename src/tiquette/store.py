@@ -568,24 +568,30 @@ def _append_note(ticket: Ticket, text: str, timestamp: str) -> None:
         ticket.description = body.rstrip() + sep + "## Notes\n\n" + note_line + "\n"
 
 
-# [AI]
-# Context: cli-redesign-v1.2 -- ticket-edit
-# Intent: apply a FieldChanges to an in-memory Ticket. Validates cycles,
-#   resolves dep/link/parent targets exist, handles symmetric link writes.
-#   Returns a list of (ticket, dir) writes the caller must perform; the
-#   caller writes them atomically (all-or-nothing).
-def apply_field_changes(
+@dataclasses.dataclass
+class _ValidatedChanges:
+    """Resolved, cycle-checked data produced by _validate_changes."""
+
+    changes: FieldChanges  # mutations in original form (notes, unset_fields, etc.)
+    resolved_add_deps: list[str]
+    resolved_remove_deps: list[str]
+    resolved_add_links: list[str]
+    resolved_remove_links: list[str]
+    resolved_parent: str | None  # None means "no change", not "unset"
+    link_targets: dict[str, Ticket]
+    unlink_targets: dict[str, Ticket]
+
+
+def _validate_changes(
     ticket: Ticket,
     changes: FieldChanges,
     tickets_dir: Path,
-    *,
-    note_timestamp: str | None = None,
-) -> list[Ticket]:
-    """Mutate `ticket` per `changes`. Return additional tickets that must
-    also be written (for symmetric link/unlink). Raises FieldChangeError
-    on validation failure; on failure no ticket has been mutated yet.
+) -> _ValidatedChanges:
+    """Validate and resolve all IDs in `changes` for `ticket`.
+
+    Raises FieldChangeError on any conflict, resolution failure, or cycle.
+    Does not mutate `ticket`.
     """
-    # Validate first (no mutation) — atomicity
     conflicts = changes.conflicting_set_and_unset()
     if conflicts:
         raise FieldChangeError(
@@ -611,42 +617,61 @@ def apply_field_changes(
         except (TicketNotFoundError, AmbiguousIDError):
             return partial
 
-    changes.add_deps = [_resolve(d) for d in changes.add_deps]
-    changes.remove_deps = [_resolve_optional(d) for d in changes.remove_deps]
-    changes.add_links = [_resolve(link) for link in changes.add_links]
-    changes.remove_links = [_resolve_optional(link) for link in changes.remove_links]
-    if changes.parent is not None:
-        changes.parent = _resolve(changes.parent)
+    resolved_add_deps = [_resolve(d) for d in changes.add_deps]
+    resolved_remove_deps = [_resolve_optional(d) for d in changes.remove_deps]
+    resolved_add_links = [_resolve(link) for link in changes.add_links]
+    resolved_remove_links = [_resolve_optional(link) for link in changes.remove_links]
+    resolved_parent = _resolve(changes.parent) if changes.parent is not None else None
 
     # Load link targets (existence already proven by resolve)
     link_targets: dict[str, Ticket] = {}
-    for link_id in changes.add_links:
+    for link_id in resolved_add_links:
         if link_id == ticket.id:
             continue
         link_targets[link_id] = read_ticket(link_id, tickets_dir)
     unlink_targets: dict[str, Ticket] = {}
-    for link_id in changes.remove_links:
+    for link_id in resolved_remove_links:
         if link_id == ticket.id:
             continue
         unlink_targets[link_id] = read_ticket(link_id, tickets_dir)
 
     # Parent cycle check (existence already proven by resolve)
-    if changes.parent is not None:
-        if has_parent_cycle(ticket.id, changes.parent, tickets_dir):
+    if resolved_parent is not None:
+        if has_parent_cycle(ticket.id, resolved_parent, tickets_dir):
             raise FieldChangeError(
-                f"setting parent of '{ticket.id}' to '{changes.parent}' would create a cycle"
+                f"setting parent of '{ticket.id}' to '{resolved_parent}' would create a cycle"
             )
 
     # Dep cycle check
-    new_deps_set = [d for d in changes.add_deps if d not in ticket.deps]
-    if new_deps_set:
+    new_deps = [d for d in resolved_add_deps if d not in ticket.deps]
+    if new_deps:
         graph = build_dep_graph(tickets_dir)
-        if has_dep_cycle(graph, {ticket.id: new_deps_set}):
+        if has_dep_cycle(graph, {ticket.id: new_deps}):
             raise FieldChangeError(
                 f"adding dependency to '{ticket.id}' would create a cycle"
             )
 
-    # ── Mutations (validation passed) ──
+    return _ValidatedChanges(
+        changes=changes,
+        resolved_add_deps=resolved_add_deps,
+        resolved_remove_deps=resolved_remove_deps,
+        resolved_add_links=resolved_add_links,
+        resolved_remove_links=resolved_remove_links,
+        resolved_parent=resolved_parent,
+        link_targets=link_targets,
+        unlink_targets=unlink_targets,
+    )
+
+
+def _apply_validated(
+    ticket: Ticket,
+    validated: _ValidatedChanges,
+    *,
+    note_timestamp: str | None = None,
+) -> list[Ticket]:
+    """Apply pre-validated changes to `ticket`. Only mutates; no validation."""
+    changes = validated.changes
+
     if changes.title is not None:
         ticket.title = changes.title
     if changes.description is not None:
@@ -659,8 +684,8 @@ def apply_field_changes(
         ticket.assignee = changes.assignee
     if changes.xref is not None:
         ticket.xref = changes.xref
-    if changes.parent is not None:
-        ticket.parent = changes.parent
+    if validated.resolved_parent is not None:
+        ticket.parent = validated.resolved_parent
 
     # Tag add/remove
     existing_tags = set(ticket.tags)
@@ -674,28 +699,28 @@ def apply_field_changes(
 
     # Dep add/remove
     existing_deps = set(ticket.deps)
-    for dep in changes.add_deps:
+    for dep in validated.resolved_add_deps:
         if dep not in existing_deps:
             ticket.deps.append(dep)
             existing_deps.add(dep)
-    if changes.remove_deps:
-        to_remove = set(changes.remove_deps)
+    if validated.resolved_remove_deps:
+        to_remove = set(validated.resolved_remove_deps)
         ticket.deps = [d for d in ticket.deps if d not in to_remove]
 
     # Link add/remove (symmetric)
     extra_writes: list[Ticket] = []
     existing_links = set(ticket.links)
-    for link_id, target in link_targets.items():
+    for link_id, target in validated.link_targets.items():
         if link_id not in existing_links:
             ticket.links.append(link_id)
             existing_links.add(link_id)
         if ticket.id not in target.links:
             target.links.append(ticket.id)
             extra_writes.append(target)
-    if changes.remove_links:
-        to_remove = set(changes.remove_links)
+    if validated.resolved_remove_links:
+        to_remove = set(validated.resolved_remove_links)
         ticket.links = [link for link in ticket.links if link not in to_remove]
-        for link_id, target in unlink_targets.items():
+        for link_id, target in validated.unlink_targets.items():
             if ticket.id in target.links:
                 target.links.remove(ticket.id)
                 if target not in extra_writes:
@@ -716,6 +741,27 @@ def apply_field_changes(
             _append_note(ticket, note, ts)
 
     return extra_writes
+
+
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-edit
+# Intent: apply a FieldChanges to an in-memory Ticket. Validates cycles,
+#   resolves dep/link/parent targets exist, handles symmetric link writes.
+#   Returns a list of (ticket, dir) writes the caller must perform; the
+#   caller writes them atomically (all-or-nothing).
+def apply_field_changes(
+    ticket: Ticket,
+    changes: FieldChanges,
+    tickets_dir: Path,
+    *,
+    note_timestamp: str | None = None,
+) -> list[Ticket]:
+    """Validate `changes` then mutate `ticket`. Return additional tickets that
+    must also be written (for symmetric link/unlink). Raises FieldChangeError
+    on validation failure; on failure no ticket has been mutated yet.
+    """
+    validated = _validate_changes(ticket, changes, tickets_dir)
+    return _apply_validated(ticket, validated, note_timestamp=note_timestamp)
 
 
 # ── ID resolution ──────────────────────────────────────────

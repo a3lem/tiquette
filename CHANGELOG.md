@@ -9,6 +9,7 @@
 - fixed: `read_ticket` validates frontmatter schema explicitly; raises `TicketParseError` on id mismatch, unknown types, or missing fields instead of crashing with `TypeError`
 - fixed: `read_ticket` now filters self-links and self-deps on read, emitting a warning to stderr
 - changed: `has_dep_cycle` is now a pure predicate; signature changed to `(graph, extra_edges)` -- no longer mutates the graph
+- changed: `apply_field_changes` split into `_validate_changes` + `_apply_validated`; validation and mutation are now structurally separate
 
 ## v0.2.0 – 2026-05-17
 
