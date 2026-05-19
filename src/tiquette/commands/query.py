@@ -9,7 +9,9 @@ import typing as T
 from collections import Counter
 from pathlib import Path
 
+from tiquette.commands._fields import VALID_TYPES
 from tiquette.store import (
+    AmbiguousIDError,
     Status,
     Ticket,
     TicketNotFoundError,
@@ -121,7 +123,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # Context: cli-redesign-v1.2 -- ticket-query requirement=list-tickets
     # Intent: drop the `-T` short for `--tag`. `--tag` is short enough.
     p_ls.add_argument("--tag", help="Filter by tag")
-    p_ls.add_argument("--type", help="Filter by type")
+    p_ls.add_argument("--type", choices=VALID_TYPES, help="Filter by type")
 
     # [AI]
     # Context: ls-parent-and-dep-filters -- ticket-query requirements list-filtered-by-parent + list-filtered-by-dependent
@@ -209,7 +211,7 @@ def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
     """Resolve a partial ticket ID or exit with an error message."""
     try:
         return resolve_id_in_dir(partial, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
+    except (TicketNotFoundError, AmbiguousIDError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
 
