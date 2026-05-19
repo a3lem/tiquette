@@ -472,6 +472,14 @@ def _handle_deps(args: argparse.Namespace) -> None:
 # Default shows all statuses. --ready/--blocked use dependency analysis.
 # Tree rendering groups children under parents with box-drawing chars.
 def _handle_ls(args: argparse.Namespace) -> None:
+    # Reject empty-string scope flags before any further processing.
+    if args.dep == "":
+        print("error: --dep requires a non-empty ticket ID", file=sys.stderr)
+        sys.exit(1)
+    if args.parent == "":
+        print("error: --parent requires a non-empty ticket ID", file=sys.stderr)
+        sys.exit(1)
+
     tickets_dir = find_tickets_dir()
     # [AI]
     # Context: ls-archived-flags -- ticket-query requirement=list-source-axis

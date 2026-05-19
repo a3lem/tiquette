@@ -16,6 +16,7 @@
 - added: `_resolve_or_exit` helper in query.py; replaces four identical try/except blocks around resolve_id_in_dir
 - fixed: `_is_blocked` now treats dangling (unknown) dep IDs as blocking, so `tq ls --ready` and `tq validate` agree on what is actionable
 - added: `_ticket_to_dict` helper in query.py; replaces three near-identical JSON serialization literals in show, info, and ls --jsonl
+- fixed: `tq ls --dep ""` and `--parent ""` now exit with a clear error instead of silently producing all tickets
 
 ## v0.2.0 – 2026-05-17
 
