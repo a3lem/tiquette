@@ -11,6 +11,7 @@
 - changed: `has_dep_cycle` is now a pure predicate; signature changed to `(graph, extra_edges)` -- no longer mutates the graph
 - changed: `apply_field_changes` split into `_validate_changes` + `_apply_validated`; validation and mutation are now structurally separate
 - added: `iter_tickets` and `load_all_tickets` in `store.py`; all glob-and-parse loops in lifecycle, autofix, validate, and query now route through them
+- improved: `_find_open_descendants` returns `dict[str, Ticket]`; `_handle_status` reuses those loaded tickets for the mutation pass instead of re-reading from disk
 
 ## v0.2.0 – 2026-05-17
 

@@ -16,7 +16,7 @@ from tiquette.store import (
     find_tickets_dir,
     generate_id,
     is_terminal,
-    iter_tickets,
+    load_all_tickets,
     read_ticket,
     resolve_id,
     write_ticket,
@@ -95,21 +95,23 @@ def _handle_create(args: argparse.Namespace) -> None:
 
 # [AI]
 # Context: ticket-lifecycle requirements for start/close/cancel/reopen
-# Intent: collect all open descendants by walking parent→child tree recursively
-def _find_open_descendants(ticket_id: str, tickets_dir: Path) -> list[str]:
-    all_tickets: list[Ticket] = list(iter_tickets(tickets_dir))
-
+# Intent: collect all open descendants by walking parent→child tree recursively;
+#   returns a dict so callers can reuse the loaded Ticket objects for mutation.
+def _find_open_descendants(
+    ticket_id: str,
+    all_tickets: dict[str, Ticket],
+) -> dict[str, Ticket]:
     children_of: dict[str, list[Ticket]] = {}
-    for t in all_tickets:
+    for t in all_tickets.values():
         if t.parent:
             children_of.setdefault(t.parent, []).append(t)
 
-    open_descendants: list[str] = []
+    open_descendants: dict[str, Ticket] = {}
 
     def _walk(parent_id: str) -> None:
         for child in children_of.get(parent_id, []):
             if not is_terminal(child.status):
-                open_descendants.append(child.id)
+                open_descendants[child.id] = child
             _walk(child.id)
 
     _walk(ticket_id)
@@ -119,11 +121,14 @@ def _find_open_descendants(ticket_id: str, tickets_dir: Path) -> list[str]:
 # [AI]
 # Context: ticket-lifecycle requirement=close-command scenario=close-notifies-last-open-child
 # Intent: notify when closing a child leaves its parent with no open children
-def _check_last_open_child(ticket: Ticket, tickets_dir: Path) -> None:
+def _check_last_open_child(
+    ticket: Ticket,
+    all_tickets: dict[str, Ticket],
+) -> None:
     if not ticket.parent:
         return
 
-    for sibling in iter_tickets(tickets_dir):
+    for sibling in all_tickets.values():
         if sibling.id == ticket.id:
             continue
         if sibling.parent == ticket.parent and not is_terminal(sibling.status):
@@ -158,17 +163,17 @@ def _handle_status(args: argparse.Namespace) -> None:
         #   each ticket; no resolution field is written. v1.2 renamed `completed`
         #   → `closed` so the stored value matches the verb.
         terminal_status = Status.CLOSED if command == "close" else Status.CANCELED
-        open_desc = _find_open_descendants(ticket.id, tickets_dir)
+        all_tickets = load_all_tickets(tickets_dir)
+        open_desc = _find_open_descendants(ticket.id, all_tickets)
         if open_desc and not args.force:
-            desc_list = ", ".join(open_desc)
+            desc_list = ", ".join(sorted(open_desc))
             sys.stderr.write(f"error: {ticket.id} has open descendants: {desc_list}\n")
             sys.exit(1)
         # Cascade descendants first so a partial failure leaves the parent open
         # (and therefore re-runnable) rather than closed-with-orphans. Each
         # cascaded ID is printed after its successful write so the user sees
         # exactly what landed on disk if a later write fails.
-        for desc_id in open_desc:
-            desc = read_ticket(desc_id, tickets_dir)
+        for desc_id, desc in open_desc.items():
             desc.status = terminal_status
             write_ticket(desc, tickets_dir)
             sys.stdout.write(desc.id + "\n")
@@ -176,7 +181,8 @@ def _handle_status(args: argparse.Namespace) -> None:
         write_ticket(ticket, tickets_dir)
         sys.stdout.write(ticket.id + "\n")
         if command == "close":
-            _check_last_open_child(ticket, tickets_dir)
+            all_tickets[ticket.id] = ticket
+            _check_last_open_child(ticket, all_tickets)
         return
 
     if command == "reopen":
