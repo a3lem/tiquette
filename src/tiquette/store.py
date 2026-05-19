@@ -558,6 +558,8 @@ def has_parent_cycle(
     child_id: str,
     new_parent: str,
     tickets_dir: Path,
+    *,
+    tickets: dict[str, Ticket] | None = None,
 ) -> bool:
     if child_id == new_parent:
         return True
@@ -569,11 +571,17 @@ def has_parent_cycle(
         if cursor in visited:
             return False  # pre-existing cycle in ancestors, not ours
         visited.add(cursor)
-        try:
-            t = read_ticket(cursor, tickets_dir)
-        except TicketNotFoundError:
-            return False
-        cursor = t.parent
+        if tickets is not None:
+            t = tickets.get(cursor)
+            if t is None:
+                return False
+            cursor = t.parent
+        else:
+            try:
+                t = read_ticket(cursor, tickets_dir)
+            except TicketNotFoundError:
+                return False
+            cursor = t.parent
     return False
 
 
@@ -666,9 +674,20 @@ def _validate_changes(
             continue
         unlink_targets[link_id] = read_ticket(link_id, tickets_dir)
 
+    # Build ticket map once when needed for cycle checks.
+    tickets_map: dict[str, Ticket] | None = None
+
+    def _tickets_map() -> dict[str, Ticket]:
+        nonlocal tickets_map
+        if tickets_map is None:
+            tickets_map = load_all_tickets(tickets_dir)
+        return tickets_map
+
     # Parent cycle check (existence already proven by resolve)
     if resolved_parent is not None:
-        if has_parent_cycle(ticket.id, resolved_parent, tickets_dir):
+        if has_parent_cycle(
+            ticket.id, resolved_parent, tickets_dir, tickets=_tickets_map()
+        ):
             raise FieldChangeError(
                 f"setting parent of '{ticket.id}' to '{resolved_parent}' would create a cycle"
             )
@@ -676,7 +695,7 @@ def _validate_changes(
     # Dep cycle check
     new_deps = [d for d in resolved_add_deps if d not in ticket.deps]
     if new_deps:
-        graph = build_dep_graph(tickets_dir)
+        graph = {t.id: list(t.deps) for t in _tickets_map().values()}
         if has_dep_cycle(graph, ticket.id, new_deps):
             raise FieldChangeError(
                 f"adding dependency to '{ticket.id}' would create a cycle"
