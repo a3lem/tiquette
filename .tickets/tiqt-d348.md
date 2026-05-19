@@ -1,6 +1,6 @@
 ---
 id: tiqt-d348
-status: open
+status: closed
 type: chore
 priority: 2
 deps: []
