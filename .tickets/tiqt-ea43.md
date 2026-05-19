@@ -1,6 +1,6 @@
 ---
 id: tiqt-ea43
-status: open
+status: closed
 type: chore
 priority: 4
 deps: []
