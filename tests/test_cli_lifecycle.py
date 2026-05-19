@@ -642,6 +642,49 @@ class TestCreateWithLink:
         assert result.returncode == 0
 
 
+class TestCascadeOrder:
+    """Force-close/cancel writes descendants before the parent (parent-last invariant)."""
+
+    def test_parent_still_open_if_write_raises_before_parent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import patch
+        from tiquette.store import Ticket, write_ticket, read_ticket
+        import tiquette.commands.lifecycle as lc
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        monkeypatch.setenv("TICKETS_DIR", str(tickets_dir))
+        write_ticket(Ticket(id="par-0001", title="Parent"), tickets_dir)
+        write_ticket(Ticket(id="chd-0001", title="Child", parent="par-0001"), tickets_dir)
+
+        original_write = write_ticket
+        written: list[str] = []
+
+        def failing_write(ticket: Ticket, td: Path) -> Path:
+            if ticket.id == "par-0001" and "chd-0001" in written:
+                raise OSError("simulated disk failure")
+            result = original_write(ticket, td)
+            written.append(ticket.id)
+            return result
+
+        with patch.object(lc, "write_ticket", side_effect=failing_write):
+            import argparse
+            ns = argparse.Namespace(id="par-0001", target_status=lc.Status.CLOSED, force=True)
+            try:
+                lc._handle_status(ns)
+            except (OSError, SystemExit):
+                pass
+
+        # Child was written; parent was not (failure before parent write)
+        assert "chd-0001" in written
+        assert "par-0001" not in written
+        # Parent on disk is still open
+        assert read_ticket("par-0001", tickets_dir).status == "open"
+        # Child on disk is closed (descendant write succeeded)
+        assert read_ticket("chd-0001", tickets_dir).status == "closed"
+
+
 class TestCreateWithNote:
     """Create with --note flag writes timestamped notes matching created timestamp."""
 

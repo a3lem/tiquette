@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- fixed: `_parse_frontmatter` now raises `TicketParseError` for unknown frontmatter keys and for lines missing `: ` separator; `_KNOWN_FRONTMATTER_KEYS` frozenset centralises the allowed set (tiqt-de75)
+- fixed: `read_ticket` title comes from the first non-empty line after `---` (strips leading `# ` if present); `## Description` section marker is matched as a whole line, not a substring (tiqt-f586)
+- fixed: `_handle_status` cascade already writes descendants before the parent (parent-last invariant confirmed); added test asserting parent stays open when `write_ticket` raises between the last descendant and the parent write (tiqt-3914)
 - fixed: legacy `status: completed` no longer crashes `tq validate`/`tq ls`/`tq show` with a raw `ValueError` traceback. `_parse_yaml_value` returns the raw string for status; `read_ticket` wraps the coercion failure in `TicketParseError`; `cli.py` catches it, prints a clean diagnostic, and points at `tq autofix` (tiqt-280e)
 - fixed: `tq archive` now propagates the "not archivable" constraint through `links` as well as `deps` and `parent`; previously a link-only chain (open A → link → closed B → link → closed C) could archive C while keeping B (tiqt-6e82)
 - changed: `_handle_archive` split into `_build_referrer_index`, `_compute_archivable`, and `_move_to_archive` (tiqt-6e82)
