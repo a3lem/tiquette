@@ -748,25 +748,10 @@ def _handle_links(args: argparse.Namespace) -> None:
 
 
 # [AI]
-# Context: archive must not orphan references from active tickets
-# Intent: find all tickets that reference a given ticket via deps, links, or parent
-def _find_referrers(
-    ticket_id: str,
-    tickets: dict[str, Ticket],
-) -> list[str]:
-    referrers: list[str] = []
-    for t in tickets.values():
-        if t.id == ticket_id:
-            continue
-        if ticket_id in t.deps or ticket_id in t.links or t.parent == ticket_id:
-            referrers.append(t.id)
-    return sorted(referrers)
-
-
-# [AI]
 # Context: split-closed-status -- archive command with reference-safety check
-# Intent: refuse to archive terminal (completed/canceled) tickets still referenced
-#   by non-archived tickets. Logic: iteratively shrink the archivable set.
+# Intent: refuse to archive terminal (closed/canceled) tickets still referenced
+#   by non-terminal tickets. Uses a reverse-reference index built once in O(n)
+#   to propagate unarchivable IDs in a single topological pass.
 def _handle_archive(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
@@ -777,21 +762,55 @@ def _handle_archive(args: argparse.Namespace) -> None:
         print("No closed or canceled tickets to archive")
         return
 
-    archivable = set(terminal_ids)
-    changed = True
-    while changed:
-        changed = False
-        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
-        for tid in sorted(archivable):
-            if _find_referrers(tid, remaining):
-                archivable.discard(tid)
-                changed = True
+    # Build reverse-reference index: for each ticket, the set of ticket IDs
+    # that reference it via deps, links, or parent.
+    referrers_of: dict[str, set[str]] = {tid: set() for tid in all_tickets}
+    for t in all_tickets.values():
+        for dep_id in t.deps:
+            if dep_id in referrers_of:
+                referrers_of[dep_id].add(t.id)
+        for link_id in t.links:
+            if link_id in referrers_of:
+                referrers_of[link_id].add(t.id)
+        if t.parent is not None and t.parent in referrers_of:
+            referrers_of[t.parent].add(t.id)
 
-    skipped = terminal_ids - archivable
-    for tid in sorted(skipped):
-        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
-        refs = _find_referrers(tid, remaining)
-        sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(refs)}\n")
+    # A terminal ticket is archivable if every ticket that references it is
+    # also archivable (i.e. also terminal and not blocked by a non-terminal
+    # referrer). Propagate the "not archivable" constraint in a single pass
+    # using a work-queue: start with all terminal IDs that have at least one
+    # non-terminal referrer.
+    archivable = set(terminal_ids)
+    not_archivable: set[str] = set()
+    work_queue = [
+        tid
+        for tid in terminal_ids
+        if referrers_of[tid] - terminal_ids  # has non-terminal referrers
+    ]
+    visited: set[str] = set()
+    while work_queue:
+        tid = work_queue.pop()
+        if tid in visited:
+            continue
+        visited.add(tid)
+        if tid in archivable:
+            archivable.discard(tid)
+            not_archivable.add(tid)
+            # Propagate: any terminal ticket that this one depends on may now
+            # have an unarchivable (now-not-archivable) referrer.
+            t = all_tickets[tid]
+            for dep_id in t.deps:
+                if dep_id in archivable:
+                    work_queue.append(dep_id)
+            if t.parent is not None and t.parent in archivable:
+                work_queue.append(t.parent)
+
+    # Report skipped tickets and their non-archivable referrers.
+    for tid in sorted(not_archivable):
+        active_refs = sorted(referrers_of[tid] - archivable - not_archivable)
+        if not active_refs:
+            active_refs = sorted(referrers_of[tid])
+        sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(active_refs)}\n")
 
     if not archivable:
         print("No closed or canceled tickets eligible for archiving")
