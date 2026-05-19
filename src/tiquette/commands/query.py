@@ -10,14 +10,12 @@ from collections import Counter
 from pathlib import Path
 
 from tiquette.store import (
-    AmbiguousIDError,
     Status,
     Ticket,
     TicketNotFoundError,
     TicketSource,
     find_tickets_dir,
     is_terminal,
-    list_ticket_ids,
     load_all_tickets,
     read_ticket,
     resolve_id,
@@ -227,6 +225,8 @@ def _checkbox(t: Ticket) -> str:
             return "[x]"
         case Status.CANCELED:
             return "[~]"
+        case _ as unreachable:
+            T.assert_never(unreachable)
 
 
 def _format_ticket_line(t: Ticket) -> str:
@@ -629,7 +629,6 @@ def _apply_filter(
         filtered.sort(key=lambda t: (t.priority, t.id))
 
     return filtered
-
 
 
 # [AI]

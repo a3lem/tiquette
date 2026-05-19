@@ -10,7 +10,6 @@ from tiquette.store import (
     _abbreviate,
     find_tickets_dir,
     iter_tickets,
-    read_ticket,
     write_ticket,
 )
 
