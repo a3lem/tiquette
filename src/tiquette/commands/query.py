@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import shutil
 import sys
@@ -465,6 +466,76 @@ def _handle_deps(args: argparse.Namespace) -> None:
     _print_tree(ticket_id, "", True, True)
 
 
+@dataclasses.dataclass
+class _TreePrinter:
+    """Holds shared state for the recursive ls tree printer."""
+
+    all_tickets: dict[str, Ticket]
+    filtered_ids: set[str]
+    context_parents: set[str]
+    visible_ids: set[str]
+    tickets_dir: Path
+    sort_key: str  # "priority" or "mtime"
+    limit: int | None
+    printed_count: int = dataclasses.field(default=0, init=False)
+
+    def _get_visible_children(self, parent_id: str | None) -> list[str]:
+        result: list[str] = []
+        for tid in sorted(self.visible_ids):
+            t = self.all_tickets.get(tid)
+            if t and t.parent == parent_id:
+                result.append(tid)
+        return result
+
+    def _has_filtered_descendants(self, tid: str) -> bool:
+        if tid in self.filtered_ids:
+            return True
+        for child_id in self._get_visible_children(tid):
+            if self._has_filtered_descendants(child_id):
+                return True
+        return False
+
+    def _sort_children(self, children: list[str]) -> None:
+        if self.sort_key == "mtime":
+            children.sort(key=lambda c: -(self.tickets_dir / f"{c}.md").stat().st_mtime)
+        else:
+            children.sort(key=lambda c: (self.all_tickets[c].priority, c))
+
+    def print_tree(self, tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
+        if self.limit is not None and self.printed_count >= self.limit:
+            return
+
+        t = self.all_tickets.get(tid)
+        if t is None:
+            return
+
+        is_context = tid in self.context_parents and tid not in self.filtered_ids
+
+        if is_root:
+            if is_context:
+                print(_format_ticket_line(t))
+            else:
+                print(_format_ticket_line_with_deps(t))
+                self.printed_count += 1
+        else:
+            connector = "└── " if is_last else "├── "
+            if is_context:
+                print(f"{prefix}{connector}{_format_ticket_line(t)}")
+            else:
+                print(f"{prefix}{connector}{_format_ticket_line_with_deps(t)}")
+                self.printed_count += 1
+
+        children = self._get_visible_children(tid)
+        self._sort_children(children)
+
+        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
+
+        for i, child_id in enumerate(children):
+            if self.limit is not None and self.printed_count >= self.limit:
+                return
+            self.print_tree(child_id, child_prefix, i == len(children) - 1, False)
+
+
 # ── ls ───────────────────────────────────────────────────────
 
 
@@ -618,72 +689,17 @@ def _handle_ls(args: argparse.Namespace) -> None:
         # --ready/--blocked under --parent: still show the named root as context
         context_parents.add(scope_root)
 
-    # Root tickets: no parent, or parent not in filtered + context
     visible_ids = filtered_ids | context_parents
 
-    def _get_visible_children(parent_id: str | None) -> list[str]:
-        """Get children of parent_id that are in the visible set."""
-        result: list[str] = []
-        for tid in sorted(visible_ids):
-            t = all_tickets.get(tid)
-            if t and t.parent == parent_id:
-                result.append(tid)
-        return result
-
-    # Check if a parent has any filtered descendants
-    def _has_filtered_descendants(tid: str) -> bool:
-        if tid in filtered_ids:
-            return True
-        for child_id in _get_visible_children(tid):
-            if _has_filtered_descendants(child_id):
-                return True
-        return False
-
-    printed_count = 0
-
-    def _print_ls_tree(
-        tid: str,
-        prefix: str,
-        is_last: bool,
-        is_root: bool,
-    ) -> None:
-        nonlocal printed_count
-        if args.limit and printed_count >= args.limit:
-            return
-
-        t = all_tickets.get(tid)
-        if t is None:
-            return
-
-        is_context = tid in context_parents and tid not in filtered_ids
-
-        if is_root:
-            if is_context:
-                print(_format_ticket_line(t))
-            else:
-                print(_format_ticket_line_with_deps(t))
-                printed_count += 1
-        else:
-            connector = "└── " if is_last else "├── "
-            if is_context:
-                print(f"{prefix}{connector}{_format_ticket_line(t)}")
-            else:
-                print(f"{prefix}{connector}{_format_ticket_line_with_deps(t)}")
-                printed_count += 1
-
-        children = _get_visible_children(tid)
-        # Sort children same as main sort
-        if args.sort == "mtime":
-            children.sort(key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime)
-        else:
-            children.sort(key=lambda c: (all_tickets[c].priority, c))
-
-        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
-
-        for i, child_id in enumerate(children):
-            if args.limit and printed_count >= args.limit:
-                return
-            _print_ls_tree(child_id, child_prefix, i == len(children) - 1, False)
+    printer = _TreePrinter(
+        all_tickets=all_tickets,
+        filtered_ids=filtered_ids,
+        context_parents=context_parents,
+        visible_ids=visible_ids,
+        tickets_dir=tickets_dir,
+        sort_key=args.sort,
+        limit=args.limit,
+    )
 
     # Get root-level tickets (no parent or parent not visible)
     roots: list[str] = []
@@ -691,7 +707,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
         t = all_tickets.get(tid)
         if t and (t.parent is None or t.parent not in visible_ids):
             # Only include if has filtered descendants or is filtered itself
-            if _has_filtered_descendants(tid):
+            if printer._has_filtered_descendants(tid):
                 roots.append(tid)
 
     # Sort roots
@@ -701,9 +717,9 @@ def _handle_ls(args: argparse.Namespace) -> None:
         roots.sort(key=lambda r: (all_tickets[r].priority, r))
 
     for root_id in roots:
-        if args.limit and printed_count >= args.limit:
+        if args.limit is not None and printer.printed_count >= args.limit:
             break
-        _print_ls_tree(root_id, "", True, True)
+        printer.print_tree(root_id, "", True, True)
 
 
 # ── tags ─────────────────────────────────────────────────────
