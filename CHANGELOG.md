@@ -4,6 +4,7 @@
 
 - fixed: hoisted function-local `datetime`/`timezone`/`Path` imports in `commands/lifecycle.py` to module level (tiqt-4597)
 - changed: `--priority` argparse argument now uses `type=int, choices=range(5)` instead of string choices; removed `VALID_PRIORITIES` constant and manual `int()` conversion in `namespace_to_field_changes` (tiqt-6695)
+- fixed: `_subtree_depth` in `tq show` tree view now memoizes results, preventing exponential blowup on wide/shared dependency subtrees (tiqt-6478)
 
 ## v0.2.0 – 2026-05-17
 

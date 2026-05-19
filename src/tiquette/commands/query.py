@@ -41,6 +41,8 @@ def _validate_status(value: str) -> str:
             f"invalid choice: {value!r} (choose from {', '.join(repr(s) for s in VALID_STATUSES)})"
         )
     return value
+
+
 VALID_SORTS = ("priority", "mtime")
 
 
@@ -82,7 +84,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # [AI] ls: many optional filters, mutual exclusion for --ready/--blocked
     p_ls = subparsers.add_parser("ls", help="List tickets")
     p_ls.add_argument(
-        "-s", "--status", type=_validate_status,
+        "-s",
+        "--status",
+        type=_validate_status,
         help="Filter by status (open|in_progress|closed|canceled)",
     )
 
@@ -95,12 +99,15 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # Intent: source axis (active|archived|all); -a mirrors `ls -a`
     source_group = p_ls.add_mutually_exclusive_group()
     source_group.add_argument(
-        "-a", "--all", action="store_true",
+        "-a",
+        "--all",
+        action="store_true",
         dest="all_sources",
         help="Include archived tickets",
     )
     source_group.add_argument(
-        "--archived", action="store_true",
+        "--archived",
+        action="store_true",
         help="Show only archived tickets",
     )
 
@@ -119,15 +126,19 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # Intent: scope `ls` to a subtree (--parent) or to direct dependents of a ticket (--dep)
     scope_group = p_ls.add_mutually_exclusive_group()
     scope_group.add_argument(
-        "--parent", metavar="ID",
+        "--parent",
+        metavar="ID",
         help="Show <ID> and its descendants as a tree",
     )
     scope_group.add_argument(
-        "--dep", metavar="ID",
+        "--dep",
+        metavar="ID",
         help="Show tickets that directly depend on <ID> (flat list)",
     )
     p_ls.add_argument(
-        "--sort", choices=VALID_SORTS, default="priority",
+        "--sort",
+        choices=VALID_SORTS,
+        default="priority",
         help="Sort by field (priority|mtime)",
     )
     p_ls.add_argument("--limit", type=_positive_int, help="Limit results")
@@ -143,7 +154,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_links.set_defaults(func=_handle_links)
 
     # archive (no args)
-    p_archive = subparsers.add_parser("archive", help="Move closed and canceled tickets to archive")
+    p_archive = subparsers.add_parser(
+        "archive", help="Move closed and canceled tickets to archive"
+    )
     p_archive.set_defaults(func=_handle_archive)
 
 
@@ -316,7 +329,8 @@ def _handle_show(args: argparse.Namespace) -> None:
 
     # Blockers: deps that are not yet in a terminal state
     open_deps = [
-        dep_id for dep_id in ticket.deps
+        dep_id
+        for dep_id in ticket.deps
         if dep_id in all_tickets and not is_terminal(all_tickets[dep_id])
     ]
     if open_deps:
@@ -327,10 +341,7 @@ def _handle_show(args: argparse.Namespace) -> None:
         print()
 
     # Blocking: tickets that depend on this one
-    blocking = [
-        t for t in all_tickets.values()
-        if ticket_id in t.deps
-    ]
+    blocking = [t for t in all_tickets.values() if ticket_id in t.deps]
     if blocking:
         print("## Blocking\n")
         for t in sorted(blocking, key=lambda x: x.id):
@@ -437,9 +448,14 @@ def _handle_deps(args: argparse.Namespace) -> None:
     assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
 
     seen: set[str] = set()
+    _depth_memo: dict[str, int] = {}
 
-    def _subtree_depth(tid: str, visited: set[str] | None = None) -> int:
+    def _subtree_depth(
+        tid: str, memo: dict[str, int], visited: set[str] | None = None
+    ) -> int:
         """Compute max depth of the dependency subtree."""
+        if tid in memo:
+            return memo[tid]
         if visited is None:
             visited = set()
         if tid in visited or tid not in all_tickets:
@@ -447,8 +463,11 @@ def _handle_deps(args: argparse.Namespace) -> None:
         visited.add(tid)
         t = all_tickets[tid]
         if not t.deps:
-            return 0
-        return 1 + max(_subtree_depth(d, visited) for d in t.deps)
+            result = 0
+        else:
+            result = 1 + max(_subtree_depth(d, memo, visited) for d in t.deps)
+        memo[tid] = result
+        return result
 
     def _print_tree(tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
         # Dedup check: skip entirely if already seen (unless --full or root)
@@ -477,7 +496,7 @@ def _handle_deps(args: argparse.Namespace) -> None:
         # Sort children by subtree depth desc, then by ID
         deps_sorted = sorted(
             t.deps,
-            key=lambda d: (-_subtree_depth(d), d),
+            key=lambda d: (-_subtree_depth(d, _depth_memo), d),
         )
 
         for i, dep_id in enumerate(deps_sorted):
@@ -572,9 +591,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
 
     # -- Sorting --
     if args.sort == "mtime":
-        filtered.sort(
-            key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime
-        )
+        filtered.sort(key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime)
     else:
         # Default: priority asc, then id asc
         filtered.sort(key=lambda t: (t.priority, t.id))
@@ -584,13 +601,13 @@ def _handle_ls(args: argparse.Namespace) -> None:
     # Intent: --dep renders flat; tree rendering is suppressed because parent/child
     #   structure is orthogonal to dependency relationships.
     if args.dep and not args.jsonl:
-        for t in (filtered[: args.limit] if args.limit else filtered):
+        for t in filtered[: args.limit] if args.limit else filtered:
             print(_format_ticket_line_with_deps(t))
         return
 
     # -- JSONL output --
     if args.jsonl:
-        for t in filtered[:args.limit] if args.limit else filtered:
+        for t in filtered[: args.limit] if args.limit else filtered:
             data = {
                 "id": t.id,
                 "title": t.title,
@@ -702,9 +719,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
         children = _get_visible_children(tid)
         # Sort children same as main sort
         if args.sort == "mtime":
-            children.sort(
-                key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime
-            )
+            children.sort(key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime)
         else:
             children.sort(key=lambda c: (all_tickets[c].priority, c))
 
@@ -781,7 +796,8 @@ def _handle_links(args: argparse.Namespace) -> None:
 # Context: archive must not orphan references from active tickets
 # Intent: find all tickets that reference a given ticket via deps, links, or parent
 def _find_referrers(
-    ticket_id: str, tickets: dict[str, Ticket],
+    ticket_id: str,
+    tickets: dict[str, Ticket],
 ) -> list[str]:
     referrers: list[str] = []
     for t in tickets.values():
