@@ -1,6 +1,6 @@
 ---
 id: tiqt-12ab
-status: open
+status: closed
 type: chore
 priority: 4
 deps: []

@@ -83,8 +83,8 @@ def _apply_renames(
     # Load every ticket once, apply rename + reference updates in memory,
     # then write all new files before deleting old ones.
     loaded: list[
-        tuple[Path, Ticket, str]
-    ] = []  # (containing_dir, updated_ticket, original_id)
+        tuple[Path, Ticket, Ticket]
+    ] = []  # (containing_dir, original_ticket, updated_ticket)
     for d in dirs:
         for ticket in iter_tickets(d):
             tid = ticket.id
@@ -101,16 +101,23 @@ def _apply_renames(
                 links=new_links,
                 parent=new_parent,
             )
-            loaded.append((d, updated, tid))
+            loaded.append((d, ticket, updated))
 
-    # Write new files first
-    for d, updated, _ in loaded:
+    # Write new files first (skip if nothing changed)
+    for d, original, updated in loaded:
+        if (
+            original.id == updated.id
+            and original.deps == updated.deps
+            and original.links == updated.links
+            and original.parent == updated.parent
+        ):
+            continue
         write_ticket(updated, d)
 
     # Delete old files whose id changed
-    for d, updated, original_id in loaded:
-        if original_id != updated.id:
-            old_path = d / f"{original_id}.md"
+    for d, original, updated in loaded:
+        if original.id != updated.id:
+            old_path = d / f"{original.id}.md"
             if old_path.exists():
                 old_path.unlink()
 

@@ -308,14 +308,10 @@ def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
-    ticket = read_ticket(ticket_id, tickets_dir)
+    result = read_ticket(ticket_id, tickets_dir, include_body=True)
+    ticket, body = result
 
     if args.json:
-        # Read raw file body for the "body" field
-        file_path = tickets_dir / f"{ticket_id}.md"
-        raw = file_path.read_text()
-        parts = raw.split("---\n")
-        body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
         print(
             json.dumps(_ticket_to_dict(ticket, include_body=True, body=body), indent=2)
         )
@@ -498,6 +494,9 @@ class _TreePrinter:
     _children_by_parent: dict[str | None, list[str]] = dataclasses.field(
         default_factory=dict, init=False, repr=False
     )
+    _mtime_by_id: dict[str, float] = dataclasses.field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         index: dict[str | None, list[str]] = {}
@@ -506,6 +505,12 @@ class _TreePrinter:
             if t is not None:
                 index.setdefault(t.parent, []).append(tid)
         self._children_by_parent = index
+
+        if self.sort_key == "mtime":
+            for tid in self.visible_ids:
+                file_path = self.tickets_dir / f"{tid}.md"
+                if file_path.exists():
+                    self._mtime_by_id[tid] = file_path.stat().st_mtime
 
     def _get_visible_children(self, parent_id: str | None) -> list[str]:
         return list(self._children_by_parent.get(parent_id, []))
@@ -520,7 +525,7 @@ class _TreePrinter:
 
     def _sort_children(self, children: list[str]) -> None:
         if self.sort_key == "mtime":
-            children.sort(key=lambda c: -(self.tickets_dir / f"{c}.md").stat().st_mtime)
+            children.sort(key=lambda c: -self._mtime_by_id.get(c, 0))
         else:
             children.sort(key=lambda c: (self.all_tickets[c].priority, c))
 
@@ -641,7 +646,12 @@ def _apply_filter(
         filtered = [t for t in filtered if t.type == args.type]
 
     if args.sort == "mtime":
-        filtered.sort(key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime)
+        mtime_cache: dict[str, float] = {}
+        for t in filtered:
+            file_path = tickets_dir / f"{t.id}.md"
+            if file_path.exists():
+                mtime_cache[t.id] = file_path.stat().st_mtime
+        filtered.sort(key=lambda t: -mtime_cache.get(t.id, 0))
     else:
         filtered.sort(key=lambda t: (t.priority, t.id))
 
@@ -722,7 +732,12 @@ def _render_tree(
                 roots.append(tid)
 
     if args.sort == "mtime":
-        roots.sort(key=lambda r: -(tickets_dir / f"{r}.md").stat().st_mtime)
+        mtime_cache: dict[str, float] = {}
+        for r in roots:
+            file_path = tickets_dir / f"{r}.md"
+            if file_path.exists():
+                mtime_cache[r] = file_path.stat().st_mtime
+        roots.sort(key=lambda r: -mtime_cache.get(r, 0))
     else:
         roots.sort(key=lambda r: (all_tickets[r].priority, r))
 

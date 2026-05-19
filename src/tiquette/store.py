@@ -370,7 +370,7 @@ def _required_list(
 # [AI]
 # Context: ticket-store requirement=ticket-file-format
 # Intent: read and parse a ticket file back into a Ticket
-def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
+def read_ticket(ticket_id: str, tickets_dir: Path, include_body: bool = False) -> Ticket | tuple[Ticket, str]:
     file_path = tickets_dir / f"{ticket_id}.md"
     if not file_path.exists():
         raise TicketNotFoundError(f"ticket not found: {ticket_id}")
@@ -384,7 +384,7 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
             f"malformed ticket file (missing frontmatter delimiters): {file_path}"
         )
     fm_raw = parts[1]
-    body = "---\n".join(parts[2:])  # rejoin in case body contains ---
+    body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
 
     fields = _parse_frontmatter(fm_raw)
 
@@ -443,7 +443,7 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
         )
         raw_deps = [did for did in raw_deps if did != ticket_id]
 
-    return Ticket(
+    ticket = Ticket(
         id=ticket_id,
         title=title,
         description=description,
@@ -458,6 +458,10 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
         xref=raw_xref,
         created=raw_created,
     )
+
+    if include_body:
+        return (ticket, body)
+    return ticket
 
 
 # ── Listing ─────────────────────────────────────────────────

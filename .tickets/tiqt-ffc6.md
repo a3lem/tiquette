@@ -1,6 +1,6 @@
 ---
 id: tiqt-ffc6
-status: open
+status: closed
 type: chore
 priority: 4
 deps: []
