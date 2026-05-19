@@ -1,6 +1,6 @@
 ---
 id: tiqt-bbd8
-status: open
+status: closed
 type: chore
 priority: 2
 deps: []
