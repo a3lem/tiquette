@@ -226,10 +226,10 @@ def _is_blocked(
 ) -> bool:
     for dep_id in ticket.deps:
         dep = all_tickets.get(dep_id)
-        if dep and not is_terminal(dep):
+        if dep and not is_terminal(dep.status):
             return True
     for t in all_tickets.values():
-        if t.parent == ticket.id and not is_terminal(t):
+        if t.parent == ticket.id and not is_terminal(t.status):
             return True
     return False
 
@@ -330,7 +330,7 @@ def _handle_show(args: argparse.Namespace) -> None:
     open_deps = [
         dep_id
         for dep_id in ticket.deps
-        if dep_id in all_tickets and not is_terminal(all_tickets[dep_id])
+        if dep_id in all_tickets and not is_terminal(all_tickets[dep_id].status)
     ]
     if open_deps:
         print("## Blockers\n")
@@ -556,14 +556,14 @@ def _handle_ls(args: argparse.Namespace) -> None:
 
     if args.ready:
         for t in candidates:
-            if is_terminal(t):
+            if is_terminal(t.status):
                 continue
             if _is_blocked(t, all_tickets):
                 continue
             filtered.append(t)
     elif args.blocked:
         for t in candidates:
-            if is_terminal(t):
+            if is_terminal(t.status):
                 continue
             if _is_blocked(t, all_tickets):
                 filtered.append(t)
@@ -752,7 +752,7 @@ def _handle_tags(args: argparse.Namespace) -> None:
 
     tag_counts: Counter[str] = Counter()
     for t in all_tickets.values():
-        if is_terminal(t):
+        if is_terminal(t.status):
             continue
         for tag in t.tags:
             tag_counts[tag] += 1
@@ -807,7 +807,7 @@ def _handle_archive(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
 
-    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t)}
+    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t.status)}
 
     if not terminal_ids:
         print("No closed or canceled tickets to archive")

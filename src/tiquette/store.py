@@ -50,8 +50,8 @@ Status.TERMINAL = frozenset({Status.CLOSED, Status.CANCELED})  # type: ignore[at
 TERMINAL_STATUSES: frozenset[Status] = Status.TERMINAL  # type: ignore[attr-defined]
 
 
-def is_terminal(t: "Ticket") -> bool:
-    return t.status in Status.TERMINAL  # type: ignore[attr-defined]
+def is_terminal(status: Status) -> bool:
+    return status in Status.TERMINAL  # type: ignore[attr-defined]
 
 
 # ── Exceptions ──────────────────────────────────────────────

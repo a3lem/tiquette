@@ -46,7 +46,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
         p.add_argument("id", help="Ticket ID")
         if name in ("close", "cancel"):
             p.add_argument(
-                "-f", "--force", action="store_true",
+                "-f",
+                "--force",
+                action="store_true",
                 help="Force closure; cascade to open descendants",
             )
         p.set_defaults(func=_handle_status)
@@ -108,7 +110,7 @@ def _find_open_descendants(ticket_id: str, tickets_dir: Path) -> list[str]:
 
     def _walk(parent_id: str) -> None:
         for child in children_of.get(parent_id, []):
-            if not is_terminal(child):
+            if not is_terminal(child.status):
                 open_descendants.append(child.id)
             _walk(child.id)
 
@@ -129,7 +131,7 @@ def _check_last_open_child(ticket: Ticket, tickets_dir: Path) -> None:
         sibling = read_ticket(f.stem, tickets_dir)
         if sibling.id == ticket.id:
             continue
-        if sibling.parent == ticket.parent and not is_terminal(sibling):
+        if sibling.parent == ticket.parent and not is_terminal(sibling.status):
             return
 
     sys.stdout.write(f"note: {ticket.parent} has no remaining open children\n")
