@@ -354,6 +354,51 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
 
     fields = _parse_frontmatter(fm_raw)
 
+    # Cross-check: frontmatter id must match the filename.
+    fm_id = fields.get("id")
+    if fm_id is not None and fm_id != ticket_id:
+        raise TicketParseError(
+            f"frontmatter id {fm_id!r} does not match filename {ticket_id!r}: {file_path}"
+        )
+
+    # Coerce and validate each known field.
+    raw_status = fields.get("status", Status.OPEN)
+    if not isinstance(raw_status, Status):
+        try:
+            raw_status = Status(str(raw_status))
+        except ValueError:
+            raise TicketParseError(f"invalid status {raw_status!r} in {file_path}")
+    raw_priority = fields.get("priority", 2)
+    if not isinstance(raw_priority, int):
+        try:
+            raw_priority = int(str(raw_priority))
+        except ValueError:
+            raise TicketParseError(f"invalid priority {raw_priority!r} in {file_path}")
+    raw_assignee = fields.get("assignee")
+    if raw_assignee is not None and not isinstance(raw_assignee, str):
+        raise TicketParseError(f"invalid assignee {raw_assignee!r} in {file_path}")
+    raw_parent = fields.get("parent")
+    if raw_parent is not None and not isinstance(raw_parent, str):
+        raise TicketParseError(f"invalid parent {raw_parent!r} in {file_path}")
+    raw_xref = fields.get("xref")
+    if raw_xref is not None and not isinstance(raw_xref, str):
+        raise TicketParseError(f"invalid xref {raw_xref!r} in {file_path}")
+    raw_type = fields.get("type", "task")
+    if not isinstance(raw_type, str):
+        raise TicketParseError(f"invalid type {raw_type!r} in {file_path}")
+    raw_created = fields.get("created", "")
+    if not isinstance(raw_created, str):
+        raise TicketParseError(f"invalid created {raw_created!r} in {file_path}")
+    raw_deps = fields.get("deps", [])
+    if not isinstance(raw_deps, list):
+        raise TicketParseError(f"invalid deps {raw_deps!r} in {file_path}")
+    raw_links = fields.get("links", [])
+    if not isinstance(raw_links, list):
+        raise TicketParseError(f"invalid links {raw_links!r} in {file_path}")
+    raw_tags = fields.get("tags", [])
+    if not isinstance(raw_tags, list):
+        raise TicketParseError(f"invalid tags {raw_tags!r} in {file_path}")
+
     # Extract title from first # heading in body
     title = "Untitled"
     description: str | None = None
@@ -370,9 +415,19 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
             description = desc_text
 
     return Ticket(
+        id=ticket_id,
         title=title,
         description=description,
-        **fields,
+        status=raw_status,
+        type=raw_type,
+        priority=raw_priority,
+        assignee=raw_assignee,
+        deps=raw_deps,
+        links=raw_links,
+        parent=raw_parent,
+        tags=raw_tags,
+        xref=raw_xref,
+        created=raw_created,
     )
 
 
