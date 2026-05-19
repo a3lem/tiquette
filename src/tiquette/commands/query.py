@@ -57,7 +57,7 @@ def _positive_int(value: str) -> int:
     return n
 
 
-def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
+def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # show <id> [--json]
     p_show = subparsers.add_parser("show", help="Display ticket")
     p_show.add_argument("id", help="Ticket ID")

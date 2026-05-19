@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import secrets
-import typing as T
 from pathlib import Path
 
 from tiquette.store import (
@@ -20,7 +19,8 @@ from tiquette.store import (
 # Intent: rename ticket IDs whose prefix no longer matches the expected abbreviation,
 #   and propagate renames into deps/links/parent of every other ticket so nothing is orphaned.
 
-def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
+
+def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = subparsers.add_parser(
         "autofix",
         help="Update tickets to be consistent with current behavior",
@@ -82,7 +82,9 @@ def _apply_renames(
 
     # Load every ticket once, apply rename + reference updates in memory,
     # then write all new files before deleting old ones.
-    loaded: list[tuple[Path, Ticket, str]] = []  # (containing_dir, updated_ticket, original_id)
+    loaded: list[
+        tuple[Path, Ticket, str]
+    ] = []  # (containing_dir, updated_ticket, original_id)
     for d in dirs:
         for path in d.glob("*.md"):
             tid = path.stem
@@ -90,7 +92,9 @@ def _apply_renames(
             new_id = renames.get(tid, tid)
             new_deps = [renames.get(x, x) for x in ticket.deps]
             new_links = [renames.get(x, x) for x in ticket.links]
-            new_parent = renames.get(ticket.parent, ticket.parent) if ticket.parent else None
+            new_parent = (
+                renames.get(ticket.parent, ticket.parent) if ticket.parent else None
+            )
             updated = dataclasses.replace(
                 ticket,
                 id=new_id,

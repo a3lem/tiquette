@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import typing as T
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +22,7 @@ from tiquette.store import (
 )
 
 
-def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
+def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     # [AI]
     # Context: cli-redesign-v1.2 -- ticket-lifecycle requirement=create-ticket
     # Intent: title is required positional. Field-flags come from the shared

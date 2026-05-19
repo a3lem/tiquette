@@ -2,11 +2,11 @@
 
 # spec: ticket-edit
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
-import typing as T
 from datetime import datetime, timezone
 
 from tiquette.commands._fields import add_edit_flags, namespace_to_field_changes
@@ -22,7 +22,7 @@ from tiquette.store import (
 )
 
 
-def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
+def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     p = subparsers.add_parser("edit", help="Modify ticket fields")
     p.add_argument("id", help="Ticket ID")
     add_edit_flags(p)
@@ -54,7 +54,9 @@ def _handle_edit(args: argparse.Namespace) -> None:
     note_ts = datetime.now(timezone.utc).isoformat() if changes.notes else None
 
     try:
-        extra = apply_field_changes(ticket, changes, tickets_dir, note_timestamp=note_ts)
+        extra = apply_field_changes(
+            ticket, changes, tickets_dir, note_timestamp=note_ts
+        )
     except FieldChangeError as exc:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
