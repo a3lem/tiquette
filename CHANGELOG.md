@@ -7,6 +7,7 @@
 - added: `TicketParseError` exception; `read_ticket` now raises it instead of asserting on malformed files
 - changed: replaced `T.Any` annotations in `store.py` and `cli.py` with concrete types (`_FrontmatterValue` union, `str | Sequence[str] | None`)
 - fixed: `read_ticket` validates frontmatter schema explicitly; raises `TicketParseError` on id mismatch, unknown types, or missing fields instead of crashing with `TypeError`
+- fixed: `read_ticket` now filters self-links and self-deps on read, emitting a warning to stderr
 
 ## v0.2.0 – 2026-05-17
 

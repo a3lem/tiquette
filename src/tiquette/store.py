@@ -4,6 +4,7 @@ import dataclasses
 import enum
 import os
 import secrets
+import sys
 import typing as T
 from datetime import datetime, timezone
 from pathlib import Path
@@ -413,6 +414,16 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
         desc_text = body[desc_start:].strip()
         if desc_text:
             description = desc_text
+
+    # Filter self-references from links and deps.
+    if ticket_id in raw_links:
+        sys.stderr.write(f"warning: {file_path}: self-link removed from links list\n")
+        raw_links = [lid for lid in raw_links if lid != ticket_id]
+    if ticket_id in raw_deps:
+        sys.stderr.write(
+            f"warning: {file_path}: self-reference removed from deps list\n"
+        )
+        raw_deps = [did for did in raw_deps if did != ticket_id]
 
     return Ticket(
         id=ticket_id,
