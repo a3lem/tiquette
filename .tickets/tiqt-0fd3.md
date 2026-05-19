@@ -1,6 +1,6 @@
 ---
 id: tiqt-0fd3
-status: open
+status: closed
 type: bug
 priority: 3
 deps: []
