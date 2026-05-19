@@ -1,6 +1,6 @@
 ---
 id: tiqt-ed8c
-status: open
+status: closed
 type: chore
 priority: 1
 deps: [tiqt-8288]
