@@ -469,16 +469,24 @@ TicketSource = T.Literal["active", "archived", "all"]
 def iter_tickets(
     tickets_dir: Path,
     *,
+    source: TicketSource = "active",
     include_archive: bool = False,
 ) -> Iterator[Ticket]:
-    """Yield every ticket in `tickets_dir` (and optionally its archive/).
+    """Yield every ticket in `tickets_dir` for the requested source.
 
-    Yields active tickets first, then archived (if `include_archive` is True).
+    `source="active"` (default) yields only top-level tickets.
+    `source="archived"` yields only archived tickets.
+    `source="all"` yields active tickets first, then archived.
+
+    `include_archive` is a deprecated alias for `source="all"`.
     """
-    for path in sorted(tickets_dir.glob("*.md")):
-        yield read_ticket(path.stem, tickets_dir)
-    if include_archive:
-        archive_dir = tickets_dir / "archive"
+    if include_archive and source == "active":
+        source = "all"
+    archive_dir = tickets_dir / "archive"
+    if source in ("active", "all"):
+        for path in sorted(tickets_dir.glob("*.md")):
+            yield read_ticket(path.stem, tickets_dir)
+    if source in ("archived", "all"):
         if archive_dir.is_dir():
             for path in sorted(archive_dir.glob("*.md")):
                 yield read_ticket(path.stem, archive_dir)
@@ -492,18 +500,16 @@ def load_all_tickets(
 
     `source="active"` (default) loads only top-level tickets.
     `source="archived"` loads only archived tickets.
-    `source="all"` loads both; on ID collision active wins.
+    `source="all"` loads both; on ID collision active wins (active is yielded
+    first by iter_tickets, so later archived entries do not overwrite them).
     """
-    result: dict[str, Ticket] = {}
-    if source in ("archived", "all"):
-        archive_dir = tickets_dir / "archive"
-        if archive_dir.is_dir():
-            for path in sorted(archive_dir.glob("*.md")):
-                result[path.stem] = read_ticket(path.stem, archive_dir)
-    if source in ("active", "all"):
-        for path in sorted(tickets_dir.glob("*.md")):
-            result[path.stem] = read_ticket(path.stem, tickets_dir)
-    return result
+    if source == "all":
+        # Active tickets are yielded first; archived entries must not overwrite.
+        result: dict[str, Ticket] = {}
+        for t in iter_tickets(tickets_dir, source="all"):
+            result.setdefault(t.id, t)
+        return result
+    return {t.id: t for t in iter_tickets(tickets_dir, source=source)}
 
 
 # ── Cycle detection ─────────────────────────────────────────
