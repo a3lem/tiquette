@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- fixed: `tq archive` now propagates the "not archivable" constraint through `links` as well as `deps` and `parent`; previously a link-only chain (open A → link → closed B → link → closed C) could archive C while keeping B (tiqt-6e82)
+- changed: `_handle_archive` split into `_build_referrer_index`, `_compute_archivable`, and `_move_to_archive` (tiqt-6e82)
 - fixed: hoisted function-local `datetime`/`timezone`/`Path` imports in `commands/lifecycle.py` to module level (tiqt-4597)
 - changed: `--priority` argparse argument now uses `type=int, choices=range(5)` instead of string choices; removed `VALID_PRIORITIES` constant and manual `int()` conversion in `namespace_to_field_changes` (tiqt-6695)
 - fixed: `_subtree_depth` in `tq show` tree view now memoizes results, preventing exponential blowup on wide/shared dependency subtrees (tiqt-6478)

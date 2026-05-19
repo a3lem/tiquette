@@ -794,23 +794,7 @@ def _handle_links(args: argparse.Namespace) -> None:
 # ── archive ──────────────────────────────────────────────────
 
 
-# [AI]
-# Context: split-closed-status -- archive command with reference-safety check
-# Intent: refuse to archive terminal (closed/canceled) tickets still referenced
-#   by non-terminal tickets. Uses a reverse-reference index built once in O(n)
-#   to propagate unarchivable IDs in a single topological pass.
-def _handle_archive(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
-    all_tickets = _load_all_tickets(tickets_dir)
-
-    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t.status)}
-
-    if not terminal_ids:
-        print("No closed or canceled tickets to archive")
-        return
-
-    # Build reverse-reference index: for each ticket, the set of ticket IDs
-    # that reference it via deps, links, or parent.
+def _build_referrer_index(all_tickets: dict[str, Ticket]) -> dict[str, set[str]]:
     referrers_of: dict[str, set[str]] = {tid: set() for tid in all_tickets}
     for t in all_tickets.values():
         for dep_id in t.deps:
@@ -821,38 +805,71 @@ def _handle_archive(args: argparse.Namespace) -> None:
                 referrers_of[link_id].add(t.id)
         if t.parent is not None and t.parent in referrers_of:
             referrers_of[t.parent].add(t.id)
+    return referrers_of
 
-    # A terminal ticket is archivable if every ticket that references it is
-    # also archivable (i.e. also terminal and not blocked by a non-terminal
-    # referrer). Propagate the "not archivable" constraint in a single pass
-    # using a work-queue: start with all terminal IDs that have at least one
-    # non-terminal referrer.
+
+# [AI]
+# Context: tiqt-6e82 -- propagation must follow every outgoing reference kind
+#   (deps, links, parent). Previously links were tracked in the referrer index
+#   but omitted from propagation, so a link-only chain leaked through.
+def _compute_archivable(
+    all_tickets: dict[str, Ticket],
+    terminal_ids: set[str],
+    referrers_of: dict[str, set[str]],
+) -> tuple[set[str], set[str]]:
     archivable = set(terminal_ids)
     not_archivable: set[str] = set()
-    work_queue = [
-        tid
-        for tid in terminal_ids
-        if referrers_of[tid] - terminal_ids  # has non-terminal referrers
-    ]
+    work_queue = [tid for tid in terminal_ids if referrers_of[tid] - terminal_ids]
     visited: set[str] = set()
     while work_queue:
         tid = work_queue.pop()
         if tid in visited:
             continue
         visited.add(tid)
-        if tid in archivable:
-            archivable.discard(tid)
-            not_archivable.add(tid)
-            # Propagate: any terminal ticket that this one depends on may now
-            # have an unarchivable (now-not-archivable) referrer.
-            t = all_tickets[tid]
-            for dep_id in t.deps:
-                if dep_id in archivable:
-                    work_queue.append(dep_id)
-            if t.parent is not None and t.parent in archivable:
-                work_queue.append(t.parent)
+        if tid not in archivable:
+            continue
+        archivable.discard(tid)
+        not_archivable.add(tid)
+        t = all_tickets[tid]
+        outgoing = (*t.deps, *t.links, *((t.parent,) if t.parent is not None else ()))
+        for ref_id in outgoing:
+            if ref_id in archivable:
+                work_queue.append(ref_id)
+    return archivable, not_archivable
 
-    # Report skipped tickets and their non-archivable referrers.
+
+def _move_to_archive(
+    tickets_dir: Path, all_tickets: dict[str, Ticket], archivable: set[str]
+) -> None:
+    archive_dir = tickets_dir / "archive"
+    archive_dir.mkdir(exist_ok=True)
+    for tid in sorted(archivable):
+        t = all_tickets[tid]
+        src = tickets_dir / f"{t.id}.md"
+        dst = archive_dir / f"{t.id}.md"
+        shutil.move(str(src), str(dst))
+        print(f"Archived {t.id}")
+
+
+# [AI]
+# Context: split-closed-status -- archive command with reference-safety check
+# Intent: refuse to archive terminal (closed/canceled) tickets still referenced
+#   by non-terminal tickets. Reverse-reference index propagates unarchivable
+#   IDs along every outgoing reference (deps, links, parent).
+def _handle_archive(args: argparse.Namespace) -> None:
+    tickets_dir = find_tickets_dir()
+    all_tickets = _load_all_tickets(tickets_dir)
+
+    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t.status)}
+    if not terminal_ids:
+        print("No closed or canceled tickets to archive")
+        return
+
+    referrers_of = _build_referrer_index(all_tickets)
+    archivable, not_archivable = _compute_archivable(
+        all_tickets, terminal_ids, referrers_of
+    )
+
     for tid in sorted(not_archivable):
         active_refs = sorted(referrers_of[tid] - archivable - not_archivable)
         if not active_refs:
@@ -863,12 +880,4 @@ def _handle_archive(args: argparse.Namespace) -> None:
         print("No closed or canceled tickets eligible for archiving")
         return
 
-    archive_dir = tickets_dir / "archive"
-    archive_dir.mkdir(exist_ok=True)
-
-    for tid in sorted(archivable):
-        t = all_tickets[tid]
-        src = tickets_dir / f"{t.id}.md"
-        dst = archive_dir / f"{t.id}.md"
-        shutil.move(str(src), str(dst))
-        print(f"Archived {t.id}")
+    _move_to_archive(tickets_dir, all_tickets, archivable)

@@ -1091,6 +1091,19 @@ class TestArchiveBehavior:
         assert (td / "arc-cb.md").exists(), "B should not be archived (A stays and depends on it)"
         assert "Skipped" in r.stderr
 
+    def test_archive_cascade_blocks_via_link(self, tmp_path: Path) -> None:
+        """Link-cascade: if A is blocked, B (linked only from A) is also blocked."""
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        # B closed; A closed and links B; open C links A.
+        write_ticket(Ticket(id="arc-lcb", title="B", status="closed"), td)
+        write_ticket(Ticket(id="arc-lca", title="A", status="closed", links=["arc-lcb"]), td)
+        write_ticket(Ticket(id="arc-lcc", title="C", links=["arc-lca"]), td)
+        r = run_tq_env("archive", env=_make_env(td))
+        assert (td / "arc-lca.md").exists(), "A should not be archived (C links it)"
+        assert (td / "arc-lcb.md").exists(), "B should not be archived (A stays and links it)"
+        assert "Skipped" in r.stderr
+
     def test_archive_no_eligible_prints_message(self, tmp_path: Path) -> None:
         """When all terminal tickets are referenced, print a clear message."""
         td = tmp_path / ".tickets"
