@@ -13,7 +13,6 @@ from tiquette.commands._fields import add_edit_flags, namespace_to_field_changes
 from tiquette.store import (
     FieldChangeError,
     TicketNotFoundError,
-    TicketsNotFoundError,
     apply_field_changes,
     find_tickets_dir,
     read_ticket,
@@ -30,11 +29,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _handle_edit(args: argparse.Namespace) -> None:
-    try:
-        tickets_dir = find_tickets_dir()
-    except TicketsNotFoundError:
-        sys.stderr.write("error: no .tickets directory found\n")
-        sys.exit(1)
+    tickets_dir = find_tickets_dir()
 
     try:
         ticket_id = resolve_id_in_dir(args.id, tickets_dir)
