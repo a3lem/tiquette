@@ -654,12 +654,14 @@ def _validate_changes(
         except (TicketNotFoundError, AmbiguousIDError) as exc:
             raise FieldChangeError(str(exc)) from exc
 
-    # Removal targets stay as-is if not resolvable; they're filtered against
-    # the ticket's actual deps/links downstream, so an unknown ID is a no-op.
+    # Removal targets: a non-existent ID is a no-op (filtered downstream),
+    # but an ambiguous ID is always an error so the user sees it.
     def _resolve_optional(partial: str) -> str:
         try:
             return resolve_id_in_dir(partial, tickets_dir)
-        except (TicketNotFoundError, AmbiguousIDError):
+        except AmbiguousIDError as exc:
+            raise FieldChangeError(str(exc)) from exc
+        except TicketNotFoundError:
             return partial
 
     resolved_add_deps = [_resolve(d) for d in changes.add_deps]

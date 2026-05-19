@@ -708,6 +708,26 @@ class TestPartialIDOnFieldValues:
         assert r.returncode != 0
         assert "not found" in r.stderr
 
+    def test_edit_undep_ambiguous_partial_errors(self, tmp_path: Path) -> None:
+        td = _make_dir(tmp_path)
+        _write(td, Ticket(id="part-aa11", title="Subject", deps=["part-aa22", "part-aa33"]))
+        _write(td, Ticket(id="part-aa22", title="Dep A"))
+        _write(td, Ticket(id="part-aa33", title="Dep B"))
+        # "aa" matches both part-aa22 and part-aa33
+        r = run_tq("edit", "aa11", "--undep", "aa", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "ambiguous" in r.stderr.lower()
+
+    def test_edit_unlink_ambiguous_partial_errors(self, tmp_path: Path) -> None:
+        td = _make_dir(tmp_path)
+        _write(td, Ticket(id="part-bb11", title="Subject", links=["part-bb22", "part-bb33"]))
+        _write(td, Ticket(id="part-bb22", title="Link A", links=["part-bb11"]))
+        _write(td, Ticket(id="part-bb33", title="Link B", links=["part-bb11"]))
+        # "bb" matches both part-bb22 and part-bb33
+        r = run_tq("edit", "bb11", "--unlink", "bb", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "ambiguous" in r.stderr.lower()
+
     def test_lifecycle_accepts_partial(self, tmp_path: Path) -> None:
         """tq start/close/cancel/reopen must accept partial IDs too."""
         td = _make_dir(tmp_path)
