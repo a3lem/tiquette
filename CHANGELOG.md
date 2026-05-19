@@ -18,6 +18,7 @@
 - added: `_ticket_to_dict` helper in query.py; replaces three near-identical JSON serialization literals in show, info, and ls --jsonl
 - fixed: `tq ls --dep ""` and `--parent ""` now exit with a clear error instead of silently producing all tickets
 - improved: `tq archive` builds a reverse-reference index once (O(n)) and propagates the "not archivable" constraint in a single pass, replacing the O(n²) iterative convergence loop
+- changed: `_handle_ls` decomposed into `_select_source`, `_apply_scope`, `_apply_filter`, `_render_flat`, `_render_jsonl`, and `_render_tree`; duplicate sort logic eliminated; `_TreePrinter` dataclass replaces `nonlocal` closure
 
 ## v0.2.0 – 2026-05-17
 
