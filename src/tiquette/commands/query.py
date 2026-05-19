@@ -173,6 +173,15 @@ def _load_all_tickets(
     return load_all_tickets(tickets_dir, source)
 
 
+def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
+    """Resolve a partial ticket ID or exit with an error message."""
+    try:
+        return resolve_id_in_dir(partial, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+
+
 # [AI]
 # Context: cli-redesign-v1.2 -- ticket-query requirement=list-ticket-line-format
 # Intent: glyph keyed on status alone; closed=[x], canceled=[~]. v1.2 renamed
@@ -258,11 +267,7 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 # (blockers, blocking, children, linked). JSON mode outputs structured data.
 def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
     ticket = read_ticket(ticket_id, tickets_dir)
 
@@ -344,11 +349,7 @@ def _handle_show(args: argparse.Namespace) -> None:
 # [AI] Info shows frontmatter and relationships but no body/description.
 def _handle_info(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
     ticket = read_ticket(ticket_id, tickets_dir)
 
@@ -390,12 +391,7 @@ def _handle_info(args: argparse.Namespace) -> None:
 
 def _handle_path(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
     file_path = tickets_dir / f"{ticket_id}.md"
     print(file_path)
 
@@ -408,12 +404,7 @@ def _handle_path(args: argparse.Namespace) -> None:
 # Children sorted by subtree depth (deepest first), then by ID.
 def _handle_deps(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
     all_tickets = _load_all_tickets(tickets_dir)
     assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
 
