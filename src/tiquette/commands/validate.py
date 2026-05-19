@@ -24,14 +24,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 def _collect_problems(tickets_dir: Path) -> list[Problem]:
     active = load_all_tickets(tickets_dir, source="active")
     archived = load_all_tickets(tickets_dir, source="archived")
-    all_tickets = {**archived, **active}  # active wins on collision
     active_ids = set(active.keys())
     archived_ids = set(archived.keys()) - active_ids
 
     problems: list[Problem] = []
 
     for ticket_id in sorted(active_ids):
-        ticket = all_tickets[ticket_id]
+        ticket = active[ticket_id]
 
         for dep_id in ticket.deps:
             if dep_id in active_ids:
