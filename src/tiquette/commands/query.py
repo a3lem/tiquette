@@ -495,14 +495,20 @@ class _TreePrinter:
     sort_key: str  # "priority" or "mtime"
     limit: int | None
     printed_count: int = dataclasses.field(default=0, init=False)
+    _children_by_parent: dict[str | None, list[str]] = dataclasses.field(
+        default_factory=dict, init=False, repr=False
+    )
 
-    def _get_visible_children(self, parent_id: str | None) -> list[str]:
-        result: list[str] = []
+    def __post_init__(self) -> None:
+        index: dict[str | None, list[str]] = {}
         for tid in sorted(self.visible_ids):
             t = self.all_tickets.get(tid)
-            if t and t.parent == parent_id:
-                result.append(tid)
-        return result
+            if t is not None:
+                index.setdefault(t.parent, []).append(tid)
+        self._children_by_parent = index
+
+    def _get_visible_children(self, parent_id: str | None) -> list[str]:
+        return list(self._children_by_parent.get(parent_id, []))
 
     def has_filtered_descendants(self, tid: str) -> bool:
         if tid in self.filtered_ids:
