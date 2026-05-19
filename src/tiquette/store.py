@@ -370,7 +370,15 @@ def _required_list(
 # [AI]
 # Context: ticket-store requirement=ticket-file-format
 # Intent: read and parse a ticket file back into a Ticket
-def read_ticket(ticket_id: str, tickets_dir: Path, include_body: bool = False) -> Ticket | tuple[Ticket, str]:
+def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
+    return _read_ticket_and_body(ticket_id, tickets_dir)[0]
+
+
+def read_ticket_with_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, str]:
+    return _read_ticket_and_body(ticket_id, tickets_dir)
+
+
+def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, str]:
     file_path = tickets_dir / f"{ticket_id}.md"
     if not file_path.exists():
         raise TicketNotFoundError(f"ticket not found: {ticket_id}")
@@ -459,9 +467,7 @@ def read_ticket(ticket_id: str, tickets_dir: Path, include_body: bool = False) -
         created=raw_created,
     )
 
-    if include_body:
-        return (ticket, body)
-    return ticket
+    return (ticket, body)
 
 
 # ── Listing ─────────────────────────────────────────────────

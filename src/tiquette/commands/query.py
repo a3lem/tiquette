@@ -20,6 +20,7 @@ from tiquette.store import (
     is_terminal,
     load_all_tickets,
     read_ticket,
+    read_ticket_with_body,
     resolve_id,
     resolve_id_in_dir,
 )
@@ -308,8 +309,7 @@ def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
-    result = read_ticket(ticket_id, tickets_dir, include_body=True)
-    ticket, body = result
+    ticket, body = read_ticket_with_body(ticket_id, tickets_dir)
 
     if args.json:
         print(
