@@ -6,7 +6,7 @@ import typing as T
 
 from tiquette import __version__
 from tiquette.commands import autofix, edit, lifecycle, query, validate
-from tiquette.store import TicketsNotFoundError
+from tiquette.store import TicketParseError, TicketsNotFoundError
 
 
 # [AI]
@@ -191,4 +191,13 @@ def main(argv: list[str] | None = None) -> None:
         args.func(args)
     except TicketsNotFoundError:
         sys.stderr.write("No .tickets/ directory found\n")
+        sys.exit(1)
+    except TicketParseError as exc:
+        # [AI]
+        # Context: tiqt-280e -- malformed/legacy frontmatter should produce a
+        #   clean diagnostic, not a Python traceback. The most common case is
+        #   a legacy `status: completed` value, which `tq autofix` migrates.
+        sys.stderr.write(f"error: {exc}\n")
+        if "invalid status 'completed'" in str(exc):
+            sys.stderr.write("hint: run `tq autofix` to migrate legacy statuses\n")
         sys.exit(1)

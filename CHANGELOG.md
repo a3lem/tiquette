@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- fixed: legacy `status: completed` no longer crashes `tq validate`/`tq ls`/`tq show` with a raw `ValueError` traceback. `_parse_yaml_value` returns the raw string for status; `read_ticket` wraps the coercion failure in `TicketParseError`; `cli.py` catches it, prints a clean diagnostic, and points at `tq autofix` (tiqt-280e)
 - fixed: `tq archive` now propagates the "not archivable" constraint through `links` as well as `deps` and `parent`; previously a link-only chain (open A → link → closed B → link → closed C) could archive C while keeping B (tiqt-6e82)
 - changed: `_handle_archive` split into `_build_referrer_index`, `_compute_archivable`, and `_move_to_archive` (tiqt-6e82)
 - removed: unused `list_ticket_ids` from `store.py` (tiqt-757b)

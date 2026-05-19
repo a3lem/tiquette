@@ -451,6 +451,23 @@ class TestReadTicket:
         assert loaded.description is None
         assert loaded.title == "No desc"
 
+    # spec: ticket-store requirement=ticket-file-format
+    def test_read_ticket_legacy_status_raises_ticket_parse_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Legacy 'completed' status surfaces as TicketParseError, not raw ValueError."""
+        from tiquette.store import TicketParseError, read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "leg-0001.md").write_text(
+            "---\nid: leg-0001\nstatus: completed\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Legacy ticket\n"
+        )
+        with pytest.raises(TicketParseError, match="invalid status"):
+            read_ticket("leg-0001", tickets_dir)
+
 
 class TestResolveId:
     """Partial ID resolution.

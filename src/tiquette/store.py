@@ -297,8 +297,11 @@ def _parse_yaml_value(key: str, raw: str) -> _FrontmatterValue:
         return None
     if key == "priority":
         return int(raw)
-    if key == "status":
-        return Status(raw)
+    # [AI]
+    # Context: tiqt-280e -- status validation belongs in read_ticket, not in
+    #   _parse_yaml_value. Returning the raw string lets read_ticket wrap the
+    #   coercion failure in TicketParseError (with file path) instead of letting
+    #   a bare ValueError escape through validate/show/ls.
     return raw
 
 
