@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 import typing as T
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tiquette.commands._fields import add_create_flags, namespace_to_field_changes
@@ -46,7 +47,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
         p.add_argument("id", help="Ticket ID")
         if name in ("close", "cancel"):
             p.add_argument(
-                "-f", "--force", action="store_true",
+                "-f",
+                "--force",
+                action="store_true",
                 help="Force closure; cascade to open descendants",
             )
         p.set_defaults(func=_handle_status)
@@ -58,9 +61,6 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
 #   apply_field_changes pipeline. The note timestamp is the same UTC
 #   instant as the ticket's `created` field (one clock read per call).
 def _handle_create(args: argparse.Namespace) -> None:
-    from datetime import datetime, timezone
-    from pathlib import Path
-
     try:
         tickets_dir = find_tickets_dir()
     except TicketsNotFoundError:

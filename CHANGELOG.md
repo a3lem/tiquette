@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- fixed: hoisted function-local `datetime`/`timezone`/`Path` imports in `commands/lifecycle.py` to module level (tiqt-4597)
+
 ## v0.2.0 – 2026-05-17
 
 - changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.
