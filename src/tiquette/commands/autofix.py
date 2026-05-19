@@ -10,6 +10,7 @@ from tiquette.store import (
     Ticket,
     _abbreviate,
     find_tickets_dir,
+    iter_tickets,
     read_ticket,
     write_ticket,
 )
@@ -19,6 +20,7 @@ from tiquette.store import (
 # Context: user request -- maintenance command to reconcile tickets with current behavior
 # Intent: rename ticket IDs whose prefix no longer matches the expected abbreviation,
 #   and propagate renames into deps/links/parent of every other ticket so nothing is orphaned.
+
 
 def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p = subparsers.add_parser(
@@ -82,15 +84,18 @@ def _apply_renames(
 
     # Load every ticket once, apply rename + reference updates in memory,
     # then write all new files before deleting old ones.
-    loaded: list[tuple[Path, Ticket, str]] = []  # (containing_dir, updated_ticket, original_id)
+    loaded: list[
+        tuple[Path, Ticket, str]
+    ] = []  # (containing_dir, updated_ticket, original_id)
     for d in dirs:
-        for path in d.glob("*.md"):
-            tid = path.stem
-            ticket = read_ticket(tid, d)
+        for ticket in iter_tickets(d):
+            tid = ticket.id
             new_id = renames.get(tid, tid)
             new_deps = [renames.get(x, x) for x in ticket.deps]
             new_links = [renames.get(x, x) for x in ticket.links]
-            new_parent = renames.get(ticket.parent, ticket.parent) if ticket.parent else None
+            new_parent = (
+                renames.get(ticket.parent, ticket.parent) if ticket.parent else None
+            )
             updated = dataclasses.replace(
                 ticket,
                 id=new_id,

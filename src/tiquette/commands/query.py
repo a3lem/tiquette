@@ -17,6 +17,7 @@ from tiquette.store import (
     find_tickets_dir,
     is_terminal,
     list_ticket_ids,
+    load_all_tickets,
     read_ticket,
     resolve_id,
 )
@@ -168,20 +169,7 @@ def _load_all_tickets(
     tickets_dir: Path,
     source: TicketSource = "active",
 ) -> dict[str, Ticket]:
-    """Load tickets from the requested source(s) into a dict keyed by ID.
-
-    `source="all"` includes archived tickets; on ID collision active wins.
-    """
-    result: dict[str, Ticket] = {}
-    if source in ("archived", "all"):
-        archive_dir = tickets_dir / "archive"
-        if archive_dir.is_dir():
-            for tid in list_ticket_ids(tickets_dir, source="archived"):
-                result[tid] = read_ticket(tid, archive_dir)
-    if source in ("active", "all"):
-        for tid in list_ticket_ids(tickets_dir, source="active"):
-            result[tid] = read_ticket(tid, tickets_dir)
-    return result
+    return load_all_tickets(tickets_dir, source)
 
 
 # [AI]

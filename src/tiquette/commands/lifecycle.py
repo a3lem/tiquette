@@ -16,6 +16,7 @@ from tiquette.store import (
     find_tickets_dir,
     generate_id,
     is_terminal,
+    iter_tickets,
     read_ticket,
     resolve_id,
     write_ticket,
@@ -96,10 +97,7 @@ def _handle_create(args: argparse.Namespace) -> None:
 # Context: ticket-lifecycle requirements for start/close/cancel/reopen
 # Intent: collect all open descendants by walking parent→child tree recursively
 def _find_open_descendants(ticket_id: str, tickets_dir: Path) -> list[str]:
-    all_tickets: list[Ticket] = []
-    for f in tickets_dir.iterdir():
-        if f.suffix == ".md":
-            all_tickets.append(read_ticket(f.stem, tickets_dir))
+    all_tickets: list[Ticket] = list(iter_tickets(tickets_dir))
 
     children_of: dict[str, list[Ticket]] = {}
     for t in all_tickets:
@@ -125,10 +123,7 @@ def _check_last_open_child(ticket: Ticket, tickets_dir: Path) -> None:
     if not ticket.parent:
         return
 
-    for f in tickets_dir.iterdir():
-        if f.suffix != ".md":
-            continue
-        sibling = read_ticket(f.stem, tickets_dir)
+    for sibling in iter_tickets(tickets_dir):
         if sibling.id == ticket.id:
             continue
         if sibling.parent == ticket.parent and not is_terminal(sibling.status):

@@ -10,6 +10,7 @@
 - fixed: `read_ticket` now filters self-links and self-deps on read, emitting a warning to stderr
 - changed: `has_dep_cycle` is now a pure predicate; signature changed to `(graph, extra_edges)` -- no longer mutates the graph
 - changed: `apply_field_changes` split into `_validate_changes` + `_apply_validated`; validation and mutation are now structurally separate
+- added: `iter_tickets` and `load_all_tickets` in `store.py`; all glob-and-parse loops in lifecycle, autofix, validate, and query now route through them
 
 ## v0.2.0 – 2026-05-17
 

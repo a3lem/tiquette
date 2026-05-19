@@ -6,7 +6,7 @@ import os
 import secrets
 import sys
 import typing as T
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -471,6 +471,46 @@ def list_ticket_ids(
     return sorted(active | archived)
 
 
+def iter_tickets(
+    tickets_dir: Path,
+    *,
+    include_archive: bool = False,
+) -> Iterator[Ticket]:
+    """Yield every ticket in `tickets_dir` (and optionally its archive/).
+
+    Yields active tickets first, then archived (if `include_archive` is True).
+    """
+    for path in sorted(tickets_dir.glob("*.md")):
+        yield read_ticket(path.stem, tickets_dir)
+    if include_archive:
+        archive_dir = tickets_dir / "archive"
+        if archive_dir.is_dir():
+            for path in sorted(archive_dir.glob("*.md")):
+                yield read_ticket(path.stem, archive_dir)
+
+
+def load_all_tickets(
+    tickets_dir: Path,
+    source: TicketSource = "active",
+) -> dict[str, Ticket]:
+    """Load all tickets from the requested source(s) into a dict keyed by ID.
+
+    `source="active"` (default) loads only top-level tickets.
+    `source="archived"` loads only archived tickets.
+    `source="all"` loads both; on ID collision active wins.
+    """
+    result: dict[str, Ticket] = {}
+    if source in ("archived", "all"):
+        archive_dir = tickets_dir / "archive"
+        if archive_dir.is_dir():
+            for path in sorted(archive_dir.glob("*.md")):
+                result[path.stem] = read_ticket(path.stem, archive_dir)
+    if source in ("active", "all"):
+        for path in sorted(tickets_dir.glob("*.md")):
+            result[path.stem] = read_ticket(path.stem, tickets_dir)
+    return result
+
+
 # ── Cycle detection ─────────────────────────────────────────
 
 
@@ -479,12 +519,7 @@ def list_ticket_ids(
 # Intent: dependency cycle detection. Lifted from the old `relationships`
 #   command module so `edit --dep` / `create --dep` can use it.
 def build_dep_graph(tickets_dir: Path) -> dict[str, list[str]]:
-    graph: dict[str, list[str]] = {}
-    for path in tickets_dir.glob("*.md"):
-        tid = path.stem
-        t = read_ticket(tid, tickets_dir)
-        graph[tid] = list(t.deps)
-    return graph
+    return {t.id: list(t.deps) for t in iter_tickets(tickets_dir)}
 
 
 def has_dep_cycle(
