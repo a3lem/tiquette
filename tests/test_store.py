@@ -612,3 +612,131 @@ class TestNullableFieldsRoundtrip:
         write_ticket(Ticket(id="abc", title="exact"), tickets_dir)
         write_ticket(Ticket(id="abc-1234", title="longer"), tickets_dir)
         assert resolve_id_in_dir("abc", tickets_dir) == "abc"
+
+
+class TestParseFrontmatter:
+    """_parse_frontmatter strict-mode: unknown/malformed keys raise TicketParseError."""
+
+    def test_unknown_key_raises(self, tmp_path: Path) -> None:
+        from tiquette.store import TicketParseError, read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "bad-0001.md").write_text(
+            "---\nid: bad-0001\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "severity: high\n"
+            "---\n# Bad ticket\n"
+        )
+        with pytest.raises(TicketParseError, match="unknown frontmatter key 'severity'"):
+            read_ticket("bad-0001", tickets_dir)
+
+    def test_malformed_line_raises(self, tmp_path: Path) -> None:
+        from tiquette.store import TicketParseError, read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "bad-0002.md").write_text(
+            "---\nid: bad-0002\nstatus open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Bad ticket\n"
+        )
+        with pytest.raises(TicketParseError, match="malformed frontmatter line"):
+            read_ticket("bad-0002", tickets_dir)
+
+    def test_key_with_empty_value_is_valid(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        # "assignee:" (no value after colon) is a valid empty-value line
+        (tickets_dir / "emp-0001.md").write_text(
+            "---\nid: emp-0001\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Empty value\n"
+        )
+        ticket = read_ticket("emp-0001", tickets_dir)
+        assert ticket.id == "emp-0001"
+
+    def test_roundtrip_still_works(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, read_ticket, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        t = Ticket(id="rt-0001", title="Roundtrip", assignee="Alice", tags=["x"])
+        write_ticket(t, tickets_dir)
+        loaded = read_ticket("rt-0001", tickets_dir)
+        assert loaded.title == "Roundtrip"
+        assert loaded.assignee == "Alice"
+        assert loaded.tags == ["x"]
+
+
+class TestReadTicketTitleAndDescription:
+    """Title comes from first non-empty line; ## Description is line-exact."""
+
+    def test_title_without_hash_prefix(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "t-0001.md").write_text(
+            "---\nid: t-0001\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\nPlain title line\n"
+        )
+        ticket = read_ticket("t-0001", tickets_dir)
+        assert ticket.title == "Plain title line"
+
+    def test_title_with_hash_prefix_stripped(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "t-0002.md").write_text(
+            "---\nid: t-0002\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# My Title\n"
+        )
+        ticket = read_ticket("t-0002", tickets_dir)
+        assert ticket.title == "My Title"
+
+    def test_hash_heading_in_body_does_not_become_title(self, tmp_path: Path) -> None:
+        """A '# Heading' that appears later in the body should not be the title."""
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "t-0003.md").write_text(
+            "---\nid: t-0003\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Actual Title\n\nSome body text.\n\n# Another Heading\n"
+        )
+        ticket = read_ticket("t-0003", tickets_dir)
+        assert ticket.title == "Actual Title"
+
+    def test_description_section_marker_line_exact(self, tmp_path: Path) -> None:
+        """'## Description' embedded inside a paragraph is not treated as a section."""
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "t-0004.md").write_text(
+            "---\nid: t-0004\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Title\n\nSee ## Description for details.\n"
+        )
+        ticket = read_ticket("t-0004", tickets_dir)
+        assert ticket.description is None
+
+    def test_description_extracted_after_exact_marker(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        (tickets_dir / "t-0005.md").write_text(
+            "---\nid: t-0005\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-01-01T00:00:00+00:00\n"
+            "---\n# Title\n\n## Description\n\nActual description text.\n"
+        )
+        ticket = read_ticket("t-0005", tickets_dir)
+        assert ticket.description == "Actual description text."

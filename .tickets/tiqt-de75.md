@@ -1,6 +1,6 @@
 ---
 id: tiqt-de75
-status: open
+status: closed
 type: bug
 priority: 2
 deps: []

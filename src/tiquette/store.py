@@ -36,6 +36,11 @@ _NULLABLE_FIELDS = {"assignee", "parent", "xref"}
 # -- Fields clearable via `tq edit --unset`. Ordered for stable diagnostics. --
 UNSET_TARGETS: tuple[str, ...] = ("parent", "xref", "assignee")
 
+# -- All frontmatter keys that read_ticket recognises. Any other key is an error. --
+_KNOWN_FRONTMATTER_KEYS: frozenset[str] = frozenset(
+    {"id", "status", "type", "priority", "assignee", "deps", "links", "parent", "tags", "xref", "created"}
+)
+
 
 # [AI]
 # Context: cli-redesign-v1.2 -- ticket-store requirement=ticket-file-format
@@ -305,15 +310,23 @@ def _parse_yaml_value(key: str, raw: str) -> _FrontmatterValue:
     return raw
 
 
-def _parse_frontmatter(text: str) -> dict[str, _FrontmatterValue]:
-    """Parse YAML frontmatter from between --- delimiters."""
+def _parse_frontmatter(text: str, file_path: Path | None = None) -> dict[str, _FrontmatterValue]:
+    """Parse YAML frontmatter from between --- delimiters.
+
+    Raises TicketParseError for malformed lines or unknown keys.
+    """
     result: dict[str, _FrontmatterValue] = {}
+    location = f" in {file_path}" if file_path else ""
     for line in text.strip().splitlines():
-        if ": " in line:
-            key, _, value = line.partition(": ")
-            key = key.strip()
-            if key in _FIELD_ORDER:
-                result[key] = _parse_yaml_value(key, value)
+        if not line:
+            continue
+        if ": " not in line and not line.endswith(":"):
+            raise TicketParseError(f"malformed frontmatter line: {line!r}{location}")
+        key, _, value = line.partition(": ")
+        key = key.strip()
+        if key not in _KNOWN_FRONTMATTER_KEYS:
+            raise TicketParseError(f"unknown frontmatter key {key!r}{location}")
+        result[key] = _parse_yaml_value(key, value)
     return result
 
 
@@ -394,7 +407,7 @@ def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, st
     fm_raw = parts[1]
     body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
 
-    fields = _parse_frontmatter(fm_raw)
+    fields = _parse_frontmatter(fm_raw, file_path)
 
     # Cross-check: frontmatter id must match the filename.
     fm_id = fields.get("id")
@@ -426,20 +439,23 @@ def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, st
     raw_links = _required_list(fields, "links", file_path)
     raw_tags = _required_list(fields, "tags", file_path)
 
-    # Extract title from first # heading in body
+    # Title: first non-empty line after the closing ---. Strip leading "# " if present.
     title = "Untitled"
     description: str | None = None
-    for line in body.splitlines():
-        if line.startswith("# "):
-            title = line[2:].strip()
+    body_lines = body.splitlines()
+    for line in body_lines:
+        if line.strip():
+            title = line[2:].strip() if line.startswith("# ") else line.strip()
             break
 
-    # Extract description section
-    if "## Description" in body:
-        desc_start = body.index("## Description") + len("## Description")
-        desc_text = body[desc_start:].strip()
-        if desc_text:
-            description = desc_text
+    # Description: everything after the first line whose stripped form is exactly
+    # "## Description". Substring matches inside paragraphs are intentionally ignored.
+    for i, line in enumerate(body_lines):
+        if line.strip() == "## Description":
+            desc_text = "\n".join(body_lines[i + 1:]).strip()
+            if desc_text:
+                description = desc_text
+            break
 
     # Filter self-references from links and deps.
     if ticket_id in raw_links:
