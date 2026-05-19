@@ -519,32 +519,33 @@ def build_dep_graph(tickets_dir: Path) -> dict[str, list[str]]:
 
 def has_dep_cycle(
     graph: Mapping[str, list[str]],
-    extra_edges: Mapping[str, Iterable[str]],
+    source: str,
+    new_deps: Iterable[str],
 ) -> bool:
-    """Return True if adding extra_edges to graph introduces a cycle.
+    """Return True if adding new_deps from source introduces a cycle.
 
-    Pure predicate: does not mutate graph or extra_edges. Walk the virtual
-    union of graph + extra_edges via DFS for each source node in extra_edges.
+    Pure predicate: does not mutate graph. Walks the virtual union of
+    graph + {source: new_deps} via DFS from source.
     """
+    seed = list(new_deps)
+    extra = set(seed)
 
     def _neighbours(node: str) -> list[str]:
         base = list(graph.get(node, []))
-        extra = list(extra_edges.get(node, []))
-        return list(set(base + extra))
+        if node == source:
+            return list(set(base) | extra)
+        return base
 
-    for source in extra_edges:
-        # Only the newly-added edges are the entry points for cycle detection.
-        seed_deps = list(extra_edges[source])
-        visited: set[str] = set()
-        stack: list[str] = seed_deps[:]
-        while stack:
-            node = stack.pop()
-            if node == source:
-                return True
-            if node in visited:
-                continue
-            visited.add(node)
-            stack.extend(_neighbours(node))
+    visited: set[str] = set()
+    stack: list[str] = seed[:]
+    while stack:
+        node = stack.pop()
+        if node == source:
+            return True
+        if node in visited:
+            continue
+        visited.add(node)
+        stack.extend(_neighbours(node))
     return False
 
 
@@ -676,7 +677,7 @@ def _validate_changes(
     new_deps = [d for d in resolved_add_deps if d not in ticket.deps]
     if new_deps:
         graph = build_dep_graph(tickets_dir)
-        if has_dep_cycle(graph, {ticket.id: new_deps}):
+        if has_dep_cycle(graph, ticket.id, new_deps):
             raise FieldChangeError(
                 f"adding dependency to '{ticket.id}' would create a cycle"
             )
