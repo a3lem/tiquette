@@ -5,6 +5,7 @@
 - changed: `Status` converted from plain string-constant class to `StrEnum`; `Ticket.status` is now typed `Status`; `_checkbox` match is now exhaustive over enum members
 - changed: `is_terminal` now accepts `status: Status` instead of a full `Ticket`; callers updated to pass `t.status`
 - added: `TicketParseError` exception; `read_ticket` now raises it instead of asserting on malformed files
+- changed: replaced `T.Any` annotations in `store.py` and `cli.py` with concrete types (`_FrontmatterValue` union, `str | Sequence[str] | None`)
 
 ## v0.2.0 – 2026-05-17
 

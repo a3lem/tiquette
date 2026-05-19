@@ -254,8 +254,11 @@ def generate_id(tickets_dir: Path) -> str:
 
 # ── Serialization helpers ───────────────────────────────────
 
+# Union of all types that can appear as a parsed frontmatter value.
+_FrontmatterValue = Status | str | int | list[str] | None
 
-def _format_yaml_value(key: str, value: T.Any) -> str:
+
+def _format_yaml_value(key: str, value: _FrontmatterValue) -> str:
     """Format a single frontmatter value as a YAML string."""
     if key in _LIST_FIELDS:
         assert isinstance(value, list)
@@ -283,7 +286,7 @@ def _serialize_frontmatter(ticket: Ticket) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _parse_yaml_value(key: str, raw: str) -> T.Any:
+def _parse_yaml_value(key: str, raw: str) -> _FrontmatterValue:
     """Parse a single YAML value back into Python."""
     raw = raw.strip()
     if key in _LIST_FIELDS:
@@ -301,9 +304,9 @@ def _parse_yaml_value(key: str, raw: str) -> T.Any:
     return raw
 
 
-def _parse_frontmatter(text: str) -> dict[str, T.Any]:
+def _parse_frontmatter(text: str) -> dict[str, _FrontmatterValue]:
     """Parse YAML frontmatter from between --- delimiters."""
-    result: dict[str, T.Any] = {}
+    result: dict[str, _FrontmatterValue] = {}
     for line in text.strip().splitlines():
         if ": " in line:
             key, _, value = line.partition(": ")
