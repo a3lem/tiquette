@@ -22,12 +22,11 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _collect_problems(tickets_dir: Path) -> list[Problem]:
-    all_tickets = load_all_tickets(tickets_dir, source="all")
-    archive_dir = tickets_dir / "archive"
-    archived_ids: set[str] = set()
-    if archive_dir.is_dir():
-        archived_ids = {p.stem for p in archive_dir.glob("*.md")}
-    active_ids = set(all_tickets.keys()) - archived_ids
+    active = load_all_tickets(tickets_dir, source="active")
+    archived = load_all_tickets(tickets_dir, source="archived")
+    all_tickets = {**archived, **active}  # active wins on collision
+    active_ids = set(active.keys())
+    archived_ids = set(archived.keys()) - active_ids
 
     problems: list[Problem] = []
 

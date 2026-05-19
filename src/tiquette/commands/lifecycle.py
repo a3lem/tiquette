@@ -36,12 +36,14 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     # [AI]
     # Context: cascade-close-cancel -- ticket-lifecycle requirements=close-command,cancel-command
     # Intent: close/cancel gain -f/--force to cascade through open descendants;
-    #   start/reopen stay flagless.
-    for name, helptext in [
-        ("start", "Set status to in_progress"),
-        ("close", "Set status to closed"),
-        ("cancel", "Set status to canceled"),
-        ("reopen", "Set status to open"),
+    #   start/reopen stay flagless. Each subparser carries its target Status
+    #   in set_defaults so _handle_status dispatches on the Status enum, not
+    #   on the subcommand name.
+    for name, helptext, target in [
+        ("start", "Set status to in_progress", Status.IN_PROGRESS),
+        ("close", "Set status to closed", Status.CLOSED),
+        ("cancel", "Set status to canceled", Status.CANCELED),
+        ("reopen", "Set status to open", Status.OPEN),
     ]:
         p = subparsers.add_parser(name, help=helptext)
         p.add_argument("id", help="Ticket ID")
@@ -52,7 +54,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 action="store_true",
                 help="Force closure; cascade to open descendants",
             )
-        p.set_defaults(func=_handle_status)
+        p.set_defaults(func=_handle_status, target_status=target)
 
 
 # [AI]
@@ -135,10 +137,7 @@ def _check_last_open_child(
 
 
 def _handle_status(args: argparse.Namespace) -> None:
-    try:
-        tickets_dir = find_tickets_dir()
-    except TicketsNotFoundError:
-        return
+    tickets_dir = find_tickets_dir()
 
     try:
         ticket_id = resolve_id_in_dir(args.id, tickets_dir)
@@ -147,19 +146,14 @@ def _handle_status(args: argparse.Namespace) -> None:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
 
-    command: str = args.command
-    assert command in ("start", "close", "cancel", "reopen"), f"unexpected: {command}"
+    target: Status = args.target_status
 
-    if command == "start":
-        ticket.status = Status.IN_PROGRESS
-    elif command in ("close", "cancel"):
+    if is_terminal(target):
         # [AI]
         # Context: cli-redesign-v1.2 -- ticket-lifecycle requirements=close-command,cancel-command
         # Intent: shared descendant rejection + optional force-cascade. The terminal
-        #   status (`closed` for close, `canceled` for cancel) is set directly on
-        #   each ticket; no resolution field is written. v1.2 renamed `completed`
-        #   → `closed` so the stored value matches the verb.
-        terminal_status = Status.CLOSED if command == "close" else Status.CANCELED
+        #   status (`closed` or `canceled`) is set directly on each ticket;
+        #   no resolution field is written.
         all_tickets = load_all_tickets(tickets_dir)
         open_desc = _find_open_descendants(ticket.id, all_tickets)
         if open_desc and not args.force:
@@ -167,24 +161,20 @@ def _handle_status(args: argparse.Namespace) -> None:
             sys.stderr.write(f"error: {ticket.id} has open descendants: {desc_list}\n")
             sys.exit(1)
         # Cascade descendants first so a partial failure leaves the parent open
-        # (and therefore re-runnable) rather than closed-with-orphans. Each
-        # cascaded ID is printed after its successful write so the user sees
-        # exactly what landed on disk if a later write fails.
-        for desc_id, desc in open_desc.items():
-            desc.status = terminal_status
+        # (and therefore re-runnable) rather than closed-with-orphans.
+        for desc in open_desc.values():
+            desc.status = target
             write_ticket(desc, tickets_dir)
             sys.stdout.write(desc.id + "\n")
-        ticket.status = terminal_status
+        ticket.status = target
         write_ticket(ticket, tickets_dir)
         sys.stdout.write(ticket.id + "\n")
-        if command == "close":
+        if target is Status.CLOSED:
             all_tickets[ticket.id] = ticket
             _check_last_open_child(ticket, all_tickets)
         return
 
-    if command == "reopen":
-        ticket.status = Status.OPEN
-
+    ticket.status = target
     write_ticket(ticket, tickets_dir)
     # [AI]
     # Context: fix-cli-output-gaps -- ticket-lifecycle requirement=transition-output

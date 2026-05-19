@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tiquette.store import (
     Ticket,
-    _abbreviate,
+    abbreviate,
     find_tickets_dir,
     iter_tickets,
     write_ticket,
@@ -52,7 +52,7 @@ def _plan_prefix_renames(
     tickets_dir: Path,
     all_ids: set[str],
 ) -> dict[str, str]:
-    expected_prefix = _abbreviate(tickets_dir.parent.name)
+    expected_prefix = abbreviate(tickets_dir.parent.name)
     renames: dict[str, str] = {}
     reserved = set(all_ids)
 

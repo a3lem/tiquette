@@ -1,6 +1,6 @@
 ---
 id: tiqt-757b
-status: open
+status: closed
 type: chore
 priority: 4
 deps: []

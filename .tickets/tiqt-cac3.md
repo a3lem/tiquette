@@ -1,6 +1,6 @@
 ---
 id: tiqt-cac3
-status: open
+status: closed
 type: bug
 priority: 2
 deps: []

@@ -33,6 +33,9 @@ _LIST_FIELDS = {"deps", "links", "tags"}
 # -- Nullable scalar fields (serialized as "null" when None) --
 _NULLABLE_FIELDS = {"assignee", "parent", "xref"}
 
+# -- Fields clearable via `tq edit --unset`. Ordered for stable diagnostics. --
+UNSET_TARGETS: tuple[str, ...] = ("parent", "xref", "assignee")
+
 
 # [AI]
 # Context: cli-redesign-v1.2 -- ticket-store requirement=ticket-file-format
@@ -45,15 +48,12 @@ class Status(enum.StrEnum):
     CANCELED = "canceled"
 
 
-# Non-member class-level constant: statuses from which no lifecycle transition is expected.
-Status.TERMINAL = frozenset({Status.CLOSED, Status.CANCELED})  # type: ignore[attr-defined]
-
 # -- Terminal statuses (no further lifecycle transitions expected) --
-TERMINAL_STATUSES: frozenset[Status] = Status.TERMINAL  # type: ignore[attr-defined]
+TERMINAL_STATUSES: frozenset[Status] = frozenset({Status.CLOSED, Status.CANCELED})
 
 
 def is_terminal(status: Status) -> bool:
-    return status in Status.TERMINAL  # type: ignore[attr-defined]
+    return status in TERMINAL_STATUSES
 
 
 # ── Exceptions ──────────────────────────────────────────────
@@ -134,15 +134,11 @@ class FieldChanges:
 
     def conflicting_set_and_unset(self) -> list[str]:
         """Fields that are both set and listed in `unset_fields`."""
-        conflicts: list[str] = []
-        for field in self.unset_fields:
-            if field == "parent" and self.parent is not None:
-                conflicts.append("parent")
-            elif field == "xref" and self.xref is not None:
-                conflicts.append("xref")
-            elif field == "assignee" and self.assignee is not None:
-                conflicts.append("assignee")
-        return conflicts
+        return [
+            field
+            for field in UNSET_TARGETS
+            if field in self.unset_fields and getattr(self, field) is not None
+        ]
 
 
 @dataclasses.dataclass
@@ -206,7 +202,7 @@ def _is_vowel(c: str) -> bool:
 #   If the resulting 4th char is a vowel, scan additional chars for a
 #   consonant; if none found, fall back to a 3-char prefix iff char 3 is
 #   itself a consonant, otherwise accept the vowel.
-def _abbreviate(name: str) -> str:
+def abbreviate(name: str) -> str:
     tokens = [t for t in name.replace("_", "-").split("-") if t]
     if not tokens:
         return name[:4].lower()
@@ -245,7 +241,7 @@ def _abbreviate(name: str) -> str:
 # Context: ticket-store requirement=id-generation
 # Intent: <abbreviated-project-prefix>-<4 hex chars>, retry on collision
 def generate_id(tickets_dir: Path) -> str:
-    prefix = _abbreviate(tickets_dir.parent.name)
+    prefix = abbreviate(tickets_dir.parent.name)
     for _ in range(100):
         suffix = secrets.token_hex(2)  # 4 hex chars
         ticket_id = f"{prefix}-{suffix}"
@@ -336,6 +332,39 @@ def write_ticket(ticket: Ticket, tickets_dir: Path) -> Path:
 
 
 # [AI]
+# Context: tiqt-6893 -- collapse repeated isinstance dance in read_ticket.
+# Intent: every typed-field extractor raises TicketParseError uniformly when
+#   the YAML value is the wrong shape; defaults apply only when the key is
+#   absent. Centralizing this means every required field treats "missing" the
+#   same way, eliminating the previous quirk where `created` defaulted to "".
+def _required_str(
+    fields: Mapping[str, _FrontmatterValue], key: str, default: str, file_path: Path
+) -> str:
+    value = fields.get(key, default)
+    if not isinstance(value, str):
+        raise TicketParseError(f"invalid {key} {value!r} in {file_path}")
+    return value
+
+
+def _optional_str(
+    fields: Mapping[str, _FrontmatterValue], key: str, file_path: Path
+) -> str | None:
+    value = fields.get(key)
+    if value is not None and not isinstance(value, str):
+        raise TicketParseError(f"invalid {key} {value!r} in {file_path}")
+    return value
+
+
+def _required_list(
+    fields: Mapping[str, _FrontmatterValue], key: str, file_path: Path
+) -> list[str]:
+    value = fields.get(key, [])
+    if not isinstance(value, list):
+        raise TicketParseError(f"invalid {key} {value!r} in {file_path}")
+    return value
+
+
+# [AI]
 # Context: ticket-store requirement=ticket-file-format
 # Intent: read and parse a ticket file back into a Ticket
 def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
@@ -363,7 +392,7 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
             f"frontmatter id {fm_id!r} does not match filename {ticket_id!r}: {file_path}"
         )
 
-    # Coerce and validate each known field.
+    # Status accepts coercion from string (legacy YAML); priority from int.
     raw_status = fields.get("status", Status.OPEN)
     if not isinstance(raw_status, Status):
         try:
@@ -376,30 +405,15 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
             raw_priority = int(str(raw_priority))
         except ValueError:
             raise TicketParseError(f"invalid priority {raw_priority!r} in {file_path}")
-    raw_assignee = fields.get("assignee")
-    if raw_assignee is not None and not isinstance(raw_assignee, str):
-        raise TicketParseError(f"invalid assignee {raw_assignee!r} in {file_path}")
-    raw_parent = fields.get("parent")
-    if raw_parent is not None and not isinstance(raw_parent, str):
-        raise TicketParseError(f"invalid parent {raw_parent!r} in {file_path}")
-    raw_xref = fields.get("xref")
-    if raw_xref is not None and not isinstance(raw_xref, str):
-        raise TicketParseError(f"invalid xref {raw_xref!r} in {file_path}")
-    raw_type = fields.get("type", "task")
-    if not isinstance(raw_type, str):
-        raise TicketParseError(f"invalid type {raw_type!r} in {file_path}")
-    raw_created = fields.get("created", "")
-    if not isinstance(raw_created, str):
-        raise TicketParseError(f"invalid created {raw_created!r} in {file_path}")
-    raw_deps = fields.get("deps", [])
-    if not isinstance(raw_deps, list):
-        raise TicketParseError(f"invalid deps {raw_deps!r} in {file_path}")
-    raw_links = fields.get("links", [])
-    if not isinstance(raw_links, list):
-        raise TicketParseError(f"invalid links {raw_links!r} in {file_path}")
-    raw_tags = fields.get("tags", [])
-    if not isinstance(raw_tags, list):
-        raise TicketParseError(f"invalid tags {raw_tags!r} in {file_path}")
+
+    raw_assignee = _optional_str(fields, "assignee", file_path)
+    raw_parent = _optional_str(fields, "parent", file_path)
+    raw_xref = _optional_str(fields, "xref", file_path)
+    raw_type = _required_str(fields, "type", "task", file_path)
+    raw_created = _required_str(fields, "created", "", file_path)
+    raw_deps = _required_list(fields, "deps", file_path)
+    raw_links = _required_list(fields, "links", file_path)
+    raw_tags = _required_list(fields, "tags", file_path)
 
     # Extract title from first # heading in body
     title = "Untitled"
@@ -447,28 +461,6 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
 
 
 TicketSource = T.Literal["active", "archived", "all"]
-
-
-# [AI]
-# Context: ls-archived-flags -- ticket-query requirement=list-source-axis
-# Intent: enumerate either active, archived, or both ticket sets
-def list_ticket_ids(
-    tickets_dir: Path,
-    source: TicketSource = "active",
-) -> list[str]:
-    """Return ticket IDs in the directory.
-
-    `source="active"` lists top-level tickets only (default).
-    `source="archived"` lists tickets under `archive/`.
-    `source="all"` lists both, deduped (active wins on collision).
-    """
-    if source == "active":
-        return sorted(p.stem for p in tickets_dir.glob("*.md"))
-    if source == "archived":
-        return sorted(p.stem for p in (tickets_dir / "archive").glob("*.md"))
-    active = {p.stem for p in tickets_dir.glob("*.md")}
-    archived = {p.stem for p in (tickets_dir / "archive").glob("*.md")}
-    return sorted(active | archived)
 
 
 def iter_tickets(
@@ -698,6 +690,22 @@ def _validate_changes(
     )
 
 
+def _merge_unique(
+    existing: list[str], additions: Iterable[str], removals: Iterable[str]
+) -> list[str]:
+    """Return `existing` with `additions` appended (deduped) and `removals` filtered out."""
+    seen = set(existing)
+    result = list(existing)
+    for item in additions:
+        if item not in seen:
+            result.append(item)
+            seen.add(item)
+    to_remove = set(removals)
+    if to_remove:
+        result = [item for item in result if item not in to_remove]
+    return result
+
+
 def _apply_validated(
     ticket: Ticket,
     validated: _ValidatedChanges,
@@ -722,52 +730,29 @@ def _apply_validated(
     if validated.resolved_parent is not None:
         ticket.parent = validated.resolved_parent
 
-    # Tag add/remove
-    existing_tags = set(ticket.tags)
-    for tag in changes.add_tags:
-        if tag not in existing_tags:
-            ticket.tags.append(tag)
-            existing_tags.add(tag)
-    if changes.remove_tags:
-        to_remove = set(changes.remove_tags)
-        ticket.tags = [t for t in ticket.tags if t not in to_remove]
+    ticket.tags = _merge_unique(ticket.tags, changes.add_tags, changes.remove_tags)
+    ticket.deps = _merge_unique(
+        ticket.deps, validated.resolved_add_deps, validated.resolved_remove_deps
+    )
 
-    # Dep add/remove
-    existing_deps = set(ticket.deps)
-    for dep in validated.resolved_add_deps:
-        if dep not in existing_deps:
-            ticket.deps.append(dep)
-            existing_deps.add(dep)
-    if validated.resolved_remove_deps:
-        to_remove = set(validated.resolved_remove_deps)
-        ticket.deps = [d for d in ticket.deps if d not in to_remove]
-
-    # Link add/remove (symmetric)
+    # Links: same merge for the local side, plus symmetric back-writes to targets.
     extra_writes: list[Ticket] = []
-    existing_links = set(ticket.links)
-    for link_id, target in validated.link_targets.items():
-        if link_id not in existing_links:
-            ticket.links.append(link_id)
-            existing_links.add(link_id)
+    ticket.links = _merge_unique(
+        ticket.links, validated.link_targets.keys(), validated.resolved_remove_links
+    )
+    for target in validated.link_targets.values():
         if ticket.id not in target.links:
             target.links.append(ticket.id)
             extra_writes.append(target)
-    if validated.resolved_remove_links:
-        to_remove = set(validated.resolved_remove_links)
-        ticket.links = [link for link in ticket.links if link not in to_remove]
-        for link_id, target in validated.unlink_targets.items():
-            if ticket.id in target.links:
-                target.links.remove(ticket.id)
-                if target not in extra_writes:
-                    extra_writes.append(target)
+    for target in validated.unlink_targets.values():
+        if ticket.id in target.links:
+            target.links.remove(ticket.id)
+            if target not in extra_writes:
+                extra_writes.append(target)
 
-    # Unset
-    if "parent" in changes.unset_fields:
-        ticket.parent = None
-    if "xref" in changes.unset_fields:
-        ticket.xref = None
-    if "assignee" in changes.unset_fields:
-        ticket.assignee = None
+    for field in UNSET_TARGETS:
+        if field in changes.unset_fields:
+            setattr(ticket, field, None)
 
     # Notes
     if changes.notes:

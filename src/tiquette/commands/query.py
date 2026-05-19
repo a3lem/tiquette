@@ -172,21 +172,24 @@ def _load_all_tickets(
     return load_all_tickets(tickets_dir, source)
 
 
+_JsonValue = str | int | list[str] | None
+
+
 def _ticket_to_dict(
     t: Ticket,
     *,
     include_body: bool = False,
     body: str | None = None,
-) -> dict[str, str | int | list[str] | None]:
+) -> dict[str, _JsonValue]:
     """Serialize a Ticket to a JSON-compatible dict.
 
     If `include_body` is True, the caller should pass `body` (the raw markdown
     body extracted from the file); it is included under the "body" key.
     """
-    data: dict[str, str | int | list[str] | None] = {
+    data: dict[str, _JsonValue] = {
         "id": t.id,
         "title": t.title,
-        "status": t.status,
+        "status": str(t.status),
         "type": t.type,
         "priority": t.priority,
         "assignee": t.assignee,
@@ -406,47 +409,45 @@ def _handle_path(args: argparse.Namespace) -> None:
 # ── deps ─────────────────────────────────────────────────────
 
 
-# [AI] Render a dependency tree with box-drawing characters.
-# Without --full, deduplicates nodes (shows each dep once).
-# Children sorted by subtree depth (deepest first), then by ID.
-def _handle_deps(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
-    ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    all_tickets = _load_all_tickets(tickets_dir)
-    assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
+def _subtree_depth(
+    tid: str,
+    all_tickets: dict[str, Ticket],
+    memo: dict[str, int],
+    visited: set[str] | None = None,
+) -> int:
+    """Compute max depth of the dependency subtree, memoized."""
+    if tid in memo:
+        return memo[tid]
+    if visited is None:
+        visited = set()
+    if tid in visited or tid not in all_tickets:
+        return 0
+    visited.add(tid)
+    t = all_tickets[tid]
+    if not t.deps:
+        result = 0
+    else:
+        result = 1 + max(_subtree_depth(d, all_tickets, memo, visited) for d in t.deps)
+    memo[tid] = result
+    return result
 
-    seen: set[str] = set()
-    _depth_memo: dict[str, int] = {}
 
-    def _subtree_depth(
-        tid: str, memo: dict[str, int], visited: set[str] | None = None
-    ) -> int:
-        """Compute max depth of the dependency subtree."""
-        if tid in memo:
-            return memo[tid]
-        if visited is None:
-            visited = set()
-        if tid in visited or tid not in all_tickets:
-            return 0
-        visited.add(tid)
-        t = all_tickets[tid]
-        if not t.deps:
-            result = 0
-        else:
-            result = 1 + max(_subtree_depth(d, memo, visited) for d in t.deps)
-        memo[tid] = result
-        return result
+@dataclasses.dataclass
+class _DepTreePrinter:
+    """Holds shared state for the recursive dep-tree printer."""
 
-    def _print_tree(tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
-        # Dedup check: skip entirely if already seen (unless --full or root)
-        if not args.full and not is_root and tid in seen:
+    all_tickets: dict[str, Ticket]
+    full: bool
+    seen: set[str] = dataclasses.field(default_factory=set)
+    depth_memo: dict[str, int] = dataclasses.field(default_factory=dict)
+
+    def print_tree(self, tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
+        # Dedup: skip entirely if already seen (unless --full or root).
+        if not self.full and not is_root and tid in self.seen:
             return
 
-        t = all_tickets.get(tid)
-        if t is None:
-            label = f"{tid} [missing]"
-        else:
-            label = _format_ticket_line(t)
+        t = self.all_tickets.get(tid)
+        label = _format_ticket_line(t) if t is not None else f"{tid} [missing]"
 
         if is_root:
             print(label)
@@ -457,21 +458,27 @@ def _handle_deps(args: argparse.Namespace) -> None:
         if t is None:
             return
 
-        seen.add(tid)
-
+        self.seen.add(tid)
         child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
-
-        # Sort children by subtree depth desc, then by ID
         deps_sorted = sorted(
             t.deps,
-            key=lambda d: (-_subtree_depth(d, _depth_memo), d),
+            key=lambda d: (-_subtree_depth(d, self.all_tickets, self.depth_memo), d),
         )
-
         for i, dep_id in enumerate(deps_sorted):
-            is_last_child = i == len(deps_sorted) - 1
-            _print_tree(dep_id, child_prefix, is_last_child, False)
+            self.print_tree(dep_id, child_prefix, i == len(deps_sorted) - 1, False)
 
-    _print_tree(ticket_id, "", True, True)
+
+# [AI] Render a dependency tree with box-drawing characters.
+# Without --full, deduplicates nodes (shows each dep once).
+# Children sorted by subtree depth (deepest first), then by ID.
+def _handle_deps(args: argparse.Namespace) -> None:
+    tickets_dir = find_tickets_dir()
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
+    all_tickets = _load_all_tickets(tickets_dir)
+    assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
+
+    printer = _DepTreePrinter(all_tickets=all_tickets, full=args.full)
+    printer.print_tree(ticket_id, "", True, True)
 
 
 @dataclasses.dataclass
@@ -495,11 +502,11 @@ class _TreePrinter:
                 result.append(tid)
         return result
 
-    def _has_filtered_descendants(self, tid: str) -> bool:
+    def has_filtered_descendants(self, tid: str) -> bool:
         if tid in self.filtered_ids:
             return True
         for child_id in self._get_visible_children(tid):
-            if self._has_filtered_descendants(child_id):
+            if self.has_filtered_descendants(child_id):
                 return True
         return False
 
@@ -559,6 +566,10 @@ def _select_source(args: argparse.Namespace, tickets_dir: Path) -> dict[str, Tic
     return _load_all_tickets(tickets_dir, source=source)
 
 
+class _LsScopeError(Exception):
+    """Raised by _apply_scope when a --parent/--dep target can't be resolved."""
+
+
 # [AI]
 # Context: ls-parent-and-dep-filters -- requirements list-filtered-by-parent + list-filtered-by-dependent
 # Intent: resolve scope ID and narrow candidates; returns (candidate_ids, scope_root).
@@ -572,14 +583,12 @@ def _apply_scope(
         return None, None
 
     if not all_tickets:
-        print(f"ticket '{raw_scope}' not found", file=sys.stderr)
-        sys.exit(1)
+        raise _LsScopeError(f"ticket '{raw_scope}' not found")
 
     try:
         scope_id = resolve_id(raw_scope, all_tickets.keys())
     except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+        raise _LsScopeError(str(e)) from e
 
     if args.parent:
         return {scope_id} | _descendants_of(scope_id, all_tickets), scope_id
@@ -701,7 +710,7 @@ def _render_tree(
     for tid in visible_ids:
         t = all_tickets.get(tid)
         if t and (t.parent is None or t.parent not in visible_ids):
-            if printer._has_filtered_descendants(tid):
+            if printer.has_filtered_descendants(tid):
                 roots.append(tid)
 
     if args.sort == "mtime":
@@ -729,7 +738,11 @@ def _handle_ls(args: argparse.Namespace) -> None:
 
     tickets_dir = find_tickets_dir()
     all_tickets = _select_source(args, tickets_dir)
-    candidate_ids, scope_root = _apply_scope(args, all_tickets)
+    try:
+        candidate_ids, scope_root = _apply_scope(args, all_tickets)
+    except _LsScopeError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
     if not all_tickets:
         return
@@ -783,9 +796,8 @@ def _handle_links(args: argparse.Namespace) -> None:
     seen_pairs: set[tuple[str, str]] = set()
     for t in all_tickets.values():
         for link_id in t.links:
-            pair = tuple(sorted([t.id, link_id]))
-            assert len(pair) == 2
-            seen_pairs.add(pair)  # type: ignore[arg-type]
+            pair = (t.id, link_id) if t.id < link_id else (link_id, t.id)
+            seen_pairs.add(pair)
 
     for a, b in sorted(seen_pairs):
         print(f"{a} <-> {b}")

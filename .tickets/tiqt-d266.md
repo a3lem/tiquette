@@ -1,6 +1,6 @@
 ---
 id: tiqt-d266
-status: open
+status: closed
 type: chore
 priority: 3
 deps: []

@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import argparse
 
-from tiquette.store import FieldChanges
+from tiquette.store import UNSET_TARGETS, FieldChanges
 
 VALID_TYPES = ("bug", "feature", "task", "epic", "chore")
-UNSET_TARGETS = ("parent", "xref", "assignee")
+
+__all__ = ("UNSET_TARGETS", "VALID_TYPES", "add_create_flags", "add_edit_flags", "namespace_to_field_changes")
 
 
 # [AI]

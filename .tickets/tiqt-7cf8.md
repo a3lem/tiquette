@@ -1,6 +1,6 @@
 ---
 id: tiqt-7cf8
-status: open
+status: closed
 type: chore
 priority: 3
 deps: []
