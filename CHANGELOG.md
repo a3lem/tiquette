@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- fixed: `_subtree_depth` in `tq show` tree view now memoizes results, preventing exponential blowup on wide/shared dependency subtrees (tiqt-6478)
+
 ## v0.2.0 – 2026-05-17
 
 - changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.
