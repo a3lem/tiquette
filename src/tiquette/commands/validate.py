@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import typing as T
 from pathlib import Path
 
 from tiquette.store import find_tickets_dir, read_ticket
@@ -15,8 +14,10 @@ from tiquette.store import find_tickets_dir, read_ticket
 Problem = tuple[str, str, str]  # (ticket_id, level, message)
 
 
-def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
-    p = subparsers.add_parser("validate", help="Check tickets for referential integrity")
+def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    p = subparsers.add_parser(
+        "validate", help="Check tickets for referential integrity"
+    )
     p.set_defaults(func=_handle_validate)
 
 
@@ -37,24 +38,40 @@ def _collect_problems(tickets_dir: Path) -> list[Problem]:
             if dep_id in active_ids:
                 continue
             if dep_id in archived_ids:
-                problems.append((ticket_id, "warning", f'depends on archived ticket "{dep_id}"'))
+                problems.append(
+                    (ticket_id, "warning", f'depends on archived ticket "{dep_id}"')
+                )
             else:
-                problems.append((ticket_id, "error", f'depends on non-existent ticket "{dep_id}"'))
+                problems.append(
+                    (ticket_id, "error", f'depends on non-existent ticket "{dep_id}"')
+                )
 
         if ticket.parent is not None:
             if ticket.parent not in active_ids:
                 if ticket.parent in archived_ids:
-                    problems.append((ticket_id, "warning", f'has archived parent "{ticket.parent}"'))
+                    problems.append(
+                        (ticket_id, "warning", f'has archived parent "{ticket.parent}"')
+                    )
                 else:
-                    problems.append((ticket_id, "error", f'has non-existent parent "{ticket.parent}"'))
+                    problems.append(
+                        (
+                            ticket_id,
+                            "error",
+                            f'has non-existent parent "{ticket.parent}"',
+                        )
+                    )
 
         for link_id in ticket.links:
             if link_id in active_ids:
                 continue
             if link_id in archived_ids:
-                problems.append((ticket_id, "warning", f'links to archived ticket "{link_id}"'))
+                problems.append(
+                    (ticket_id, "warning", f'links to archived ticket "{link_id}"')
+                )
             else:
-                problems.append((ticket_id, "error", f'links to non-existent ticket "{link_id}"'))
+                problems.append(
+                    (ticket_id, "error", f'links to non-existent ticket "{link_id}"')
+                )
 
     problems.sort(key=lambda p: (p[0], p[1] == "warning"))
     return problems

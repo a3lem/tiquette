@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- fixed: replaced private `T._GenericAlias` annotation on all five `register()` signatures with `argparse._SubParsersAction[argparse.ArgumentParser]`; removed `type: ignore` comments and unused `import typing as T` (tiqt-d348)
+
 ## v0.2.0 – 2026-05-17
 
 - changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.
