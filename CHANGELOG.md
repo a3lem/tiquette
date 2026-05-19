@@ -8,6 +8,7 @@
 - changed: replaced `T.Any` annotations in `store.py` and `cli.py` with concrete types (`_FrontmatterValue` union, `str | Sequence[str] | None`)
 - fixed: `read_ticket` validates frontmatter schema explicitly; raises `TicketParseError` on id mismatch, unknown types, or missing fields instead of crashing with `TypeError`
 - fixed: `read_ticket` now filters self-links and self-deps on read, emitting a warning to stderr
+- changed: `has_dep_cycle` is now a pure predicate; signature changed to `(graph, extra_edges)` -- no longer mutates the graph
 
 ## v0.2.0 – 2026-05-17
 

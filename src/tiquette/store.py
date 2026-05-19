@@ -6,6 +6,7 @@ import os
 import secrets
 import sys
 import typing as T
+from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -487,24 +488,33 @@ def build_dep_graph(tickets_dir: Path) -> dict[str, list[str]]:
 
 
 def has_dep_cycle(
-    graph: dict[str, list[str]],
-    source: str,
-    new_deps: list[str],
+    graph: Mapping[str, list[str]],
+    extra_edges: Mapping[str, Iterable[str]],
 ) -> bool:
-    original = graph.get(source, [])
-    graph[source] = list(set(original + new_deps))
-    visited: set[str] = set()
-    stack: list[str] = list(new_deps)
-    while stack:
-        node = stack.pop()
-        if node == source:
-            graph[source] = original
-            return True
-        if node in visited:
-            continue
-        visited.add(node)
-        stack.extend(graph.get(node, []))
-    graph[source] = original
+    """Return True if adding extra_edges to graph introduces a cycle.
+
+    Pure predicate: does not mutate graph or extra_edges. Walk the virtual
+    union of graph + extra_edges via DFS for each source node in extra_edges.
+    """
+
+    def _neighbours(node: str) -> list[str]:
+        base = list(graph.get(node, []))
+        extra = list(extra_edges.get(node, []))
+        return list(set(base + extra))
+
+    for source in extra_edges:
+        # Only the newly-added edges are the entry points for cycle detection.
+        seed_deps = list(extra_edges[source])
+        visited: set[str] = set()
+        stack: list[str] = seed_deps[:]
+        while stack:
+            node = stack.pop()
+            if node == source:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            stack.extend(_neighbours(node))
     return False
 
 
@@ -631,7 +641,7 @@ def apply_field_changes(
     new_deps_set = [d for d in changes.add_deps if d not in ticket.deps]
     if new_deps_set:
         graph = build_dep_graph(tickets_dir)
-        if has_dep_cycle(graph, ticket.id, new_deps_set):
+        if has_dep_cycle(graph, {ticket.id: new_deps_set}):
             raise FieldChangeError(
                 f"adding dependency to '{ticket.id}' would create a cycle"
             )
