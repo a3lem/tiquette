@@ -173,6 +173,36 @@ def _load_all_tickets(
     return load_all_tickets(tickets_dir, source)
 
 
+def _ticket_to_dict(
+    t: Ticket,
+    *,
+    include_body: bool = False,
+    body: str | None = None,
+) -> dict[str, str | int | list[str] | None]:
+    """Serialize a Ticket to a JSON-compatible dict.
+
+    If `include_body` is True, the caller should pass `body` (the raw markdown
+    body extracted from the file); it is included under the "body" key.
+    """
+    data: dict[str, str | int | list[str] | None] = {
+        "id": t.id,
+        "title": t.title,
+        "status": t.status,
+        "type": t.type,
+        "priority": t.priority,
+        "assignee": t.assignee,
+        "deps": t.deps,
+        "links": t.links,
+        "parent": t.parent,
+        "tags": t.tags,
+        "xref": t.xref,
+        "created": t.created,
+    }
+    if include_body:
+        data["body"] = body
+    return data
+
+
 def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
     """Resolve a partial ticket ID or exit with an error message."""
     try:
@@ -280,22 +310,9 @@ def _handle_show(args: argparse.Namespace) -> None:
         raw = file_path.read_text()
         parts = raw.split("---\n")
         body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
-        data = {
-            "id": ticket.id,
-            "title": ticket.title,
-            "status": ticket.status,
-            "type": ticket.type,
-            "priority": ticket.priority,
-            "assignee": ticket.assignee,
-            "deps": ticket.deps,
-            "links": ticket.links,
-            "parent": ticket.parent,
-            "tags": ticket.tags,
-            "xref": ticket.xref,
-            "created": ticket.created,
-            "body": body,
-        }
-        print(json.dumps(data, indent=2))
+        print(
+            json.dumps(_ticket_to_dict(ticket, include_body=True, body=body), indent=2)
+        )
         return
 
     # Read and print raw file content (frontmatter + body)
@@ -357,21 +374,7 @@ def _handle_info(args: argparse.Namespace) -> None:
     ticket = read_ticket(ticket_id, tickets_dir)
 
     if args.json:
-        data = {
-            "id": ticket.id,
-            "title": ticket.title,
-            "status": ticket.status,
-            "type": ticket.type,
-            "priority": ticket.priority,
-            "assignee": ticket.assignee,
-            "deps": ticket.deps,
-            "links": ticket.links,
-            "parent": ticket.parent,
-            "tags": ticket.tags,
-            "xref": ticket.xref,
-            "created": ticket.created,
-        }
-        print(json.dumps(data, indent=2))
+        print(json.dumps(_ticket_to_dict(ticket), indent=2))
         return
 
     # Print frontmatter fields only
@@ -564,19 +567,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
     # -- JSONL output --
     if args.jsonl:
         for t in filtered[: args.limit] if args.limit else filtered:
-            data = {
-                "id": t.id,
-                "title": t.title,
-                "status": t.status,
-                "type": t.type,
-                "priority": t.priority,
-                "assignee": t.assignee,
-                "deps": t.deps,
-                "links": t.links,
-                "parent": t.parent,
-                "tags": t.tags,
-            }
-            print(json.dumps(data))
+            print(json.dumps(_ticket_to_dict(t)))
         return
 
     # -- Tree rendering --
