@@ -1,6 +1,6 @@
 ---
 id: tiqt-a713
-status: open
+status: closed
 type: chore
 priority: 3
 deps: []
