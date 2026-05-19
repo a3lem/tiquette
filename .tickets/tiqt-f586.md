@@ -1,6 +1,6 @@
 ---
 id: tiqt-f586
-status: open
+status: closed
 type: bug
 priority: 3
 deps: []
