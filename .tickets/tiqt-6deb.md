@@ -1,6 +1,6 @@
 ---
 id: tiqt-6deb
-status: open
+status: closed
 type: bug
 priority: 3
 deps: []
