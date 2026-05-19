@@ -135,9 +135,13 @@ def _migrate_completed_to_closed(dirs: list[Path]) -> int:
             changed = False
             new_lines: list[str] = []
             for line in fm_lines:
-                if line.strip() == "status: completed":
-                    new_lines.append("status: closed\n")
-                    changed = True
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    if key.strip() == "status" and value.strip() == "completed":
+                        new_lines.append("status: closed\n")
+                        changed = True
+                    else:
+                        new_lines.append(line)
                 else:
                     new_lines.append(line)
             if changed:
