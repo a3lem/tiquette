@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- changed: `--priority` argparse argument now uses `type=int, choices=range(5)` instead of string choices; removed `VALID_PRIORITIES` constant and manual `int()` conversion in `namespace_to_field_changes` (tiqt-6695)
+
 ## v0.2.0 – 2026-05-17
 
 - changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.
