@@ -75,6 +75,12 @@ class AmbiguousIDError(ValueError):
     pass
 
 
+class TicketParseError(ValueError):
+    """Raised when a ticket file cannot be parsed (malformed content)."""
+
+    pass
+
+
 # ── Data model ──────────────────────────────────────────────
 
 
@@ -336,7 +342,10 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
 
     # Split on --- delimiters
     parts = content.split("---\n")
-    assert len(parts) >= 3, f"malformed ticket file: {file_path}"
+    if len(parts) < 3:
+        raise TicketParseError(
+            f"malformed ticket file (missing frontmatter delimiters): {file_path}"
+        )
     fm_raw = parts[1]
     body = "---\n".join(parts[2:])  # rejoin in case body contains ---
 
