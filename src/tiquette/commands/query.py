@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import shutil
 import sys
@@ -10,21 +11,24 @@ from pathlib import Path
 
 from tiquette.store import (
     AmbiguousIDError,
+    Status,
     Ticket,
     TicketNotFoundError,
     TicketSource,
     find_tickets_dir,
     is_terminal,
     list_ticket_ids,
+    load_all_tickets,
     read_ticket,
     resolve_id,
+    resolve_id_in_dir,
 )
 
 
 # [AI] Query commands: show, info, path, deps, ls, tags, archive.
 # ls has complex filtering with validation and mutual exclusion.
 
-VALID_STATUSES = ("open", "in_progress", "closed", "canceled")
+VALID_STATUSES = tuple(s.value for s in Status)
 
 
 # [AI]
@@ -167,20 +171,46 @@ def _load_all_tickets(
     tickets_dir: Path,
     source: TicketSource = "active",
 ) -> dict[str, Ticket]:
-    """Load tickets from the requested source(s) into a dict keyed by ID.
+    return load_all_tickets(tickets_dir, source)
 
-    `source="all"` includes archived tickets; on ID collision active wins.
+
+def _ticket_to_dict(
+    t: Ticket,
+    *,
+    include_body: bool = False,
+    body: str | None = None,
+) -> dict[str, str | int | list[str] | None]:
+    """Serialize a Ticket to a JSON-compatible dict.
+
+    If `include_body` is True, the caller should pass `body` (the raw markdown
+    body extracted from the file); it is included under the "body" key.
     """
-    result: dict[str, Ticket] = {}
-    if source in ("archived", "all"):
-        archive_dir = tickets_dir / "archive"
-        if archive_dir.is_dir():
-            for tid in list_ticket_ids(tickets_dir, source="archived"):
-                result[tid] = read_ticket(tid, archive_dir)
-    if source in ("active", "all"):
-        for tid in list_ticket_ids(tickets_dir, source="active"):
-            result[tid] = read_ticket(tid, tickets_dir)
-    return result
+    data: dict[str, str | int | list[str] | None] = {
+        "id": t.id,
+        "title": t.title,
+        "status": t.status,
+        "type": t.type,
+        "priority": t.priority,
+        "assignee": t.assignee,
+        "deps": t.deps,
+        "links": t.links,
+        "parent": t.parent,
+        "tags": t.tags,
+        "xref": t.xref,
+        "created": t.created,
+    }
+    if include_body:
+        data["body"] = body
+    return data
+
+
+def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
+    """Resolve a partial ticket ID or exit with an error message."""
+    try:
+        return resolve_id_in_dir(partial, tickets_dir)
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
 
 # [AI]
@@ -189,16 +219,14 @@ def _load_all_tickets(
 #   `completed` → `closed`.
 def _checkbox(t: Ticket) -> str:
     match t.status:
-        case "open":
+        case Status.OPEN:
             return "[ ]"
-        case "in_progress":
+        case Status.IN_PROGRESS:
             return "[/]"
-        case "closed":
+        case Status.CLOSED:
             return "[x]"
-        case "canceled":
+        case Status.CANCELED:
             return "[~]"
-        case _:
-            return "[?]"
 
 
 def _format_ticket_line(t: Ticket) -> str:
@@ -227,30 +255,15 @@ def _is_blocked(
 ) -> bool:
     for dep_id in ticket.deps:
         dep = all_tickets.get(dep_id)
-        if dep and not is_terminal(dep):
+        if dep is None:
+            # Dangling dep: unknown ticket is treated as blocking.
+            return True
+        if not is_terminal(dep.status):
             return True
     for t in all_tickets.values():
-        if t.parent == ticket.id and not is_terminal(t):
+        if t.parent == ticket.id and not is_terminal(t.status):
             return True
     return False
-
-
-# [AI]
-# Context: ls-parent-and-dep-filters -- ticket-query requirement=list-filtered-by-parent
-# Intent: partial-ID resolution scoped to the loaded source set so that --archived/--all
-#   can resolve archived IDs without forking the global resolve_id signature.
-def _resolve_in_set(partial: str, all_tickets: dict[str, Ticket]) -> str:
-    all_ids = sorted(all_tickets.keys())
-    if partial in all_tickets:
-        return partial
-    matches = [tid for tid in all_ids if partial in tid]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) == 0:
-        raise TicketNotFoundError(f"ticket '{partial}' not found")
-    raise AmbiguousIDError(
-        f"ambiguous ID '{partial}' matches multiple tickets: {matches}"
-    )
 
 
 # [AI]
@@ -288,11 +301,7 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 # (blockers, blocking, children, linked). JSON mode outputs structured data.
 def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
     ticket = read_ticket(ticket_id, tickets_dir)
 
@@ -302,22 +311,9 @@ def _handle_show(args: argparse.Namespace) -> None:
         raw = file_path.read_text()
         parts = raw.split("---\n")
         body = "---\n".join(parts[2:]).strip() if len(parts) >= 3 else ""
-        data = {
-            "id": ticket.id,
-            "title": ticket.title,
-            "status": ticket.status,
-            "type": ticket.type,
-            "priority": ticket.priority,
-            "assignee": ticket.assignee,
-            "deps": ticket.deps,
-            "links": ticket.links,
-            "parent": ticket.parent,
-            "tags": ticket.tags,
-            "xref": ticket.xref,
-            "created": ticket.created,
-            "body": body,
-        }
-        print(json.dumps(data, indent=2))
+        print(
+            json.dumps(_ticket_to_dict(ticket, include_body=True, body=body), indent=2)
+        )
         return
 
     # Read and print raw file content (frontmatter + body)
@@ -331,7 +327,7 @@ def _handle_show(args: argparse.Namespace) -> None:
     open_deps = [
         dep_id
         for dep_id in ticket.deps
-        if dep_id in all_tickets and not is_terminal(all_tickets[dep_id])
+        if dep_id in all_tickets and not is_terminal(all_tickets[dep_id].status)
     ]
     if open_deps:
         print("## Blockers\n")
@@ -374,30 +370,12 @@ def _handle_show(args: argparse.Namespace) -> None:
 # [AI] Info shows frontmatter and relationships but no body/description.
 def _handle_info(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
 
     ticket = read_ticket(ticket_id, tickets_dir)
 
     if args.json:
-        data = {
-            "id": ticket.id,
-            "title": ticket.title,
-            "status": ticket.status,
-            "type": ticket.type,
-            "priority": ticket.priority,
-            "assignee": ticket.assignee,
-            "deps": ticket.deps,
-            "links": ticket.links,
-            "parent": ticket.parent,
-            "tags": ticket.tags,
-            "xref": ticket.xref,
-            "created": ticket.created,
-        }
-        print(json.dumps(data, indent=2))
+        print(json.dumps(_ticket_to_dict(ticket), indent=2))
         return
 
     # Print frontmatter fields only
@@ -420,12 +398,7 @@ def _handle_info(args: argparse.Namespace) -> None:
 
 def _handle_path(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
     file_path = tickets_dir / f"{ticket_id}.md"
     print(file_path)
 
@@ -438,12 +411,7 @@ def _handle_path(args: argparse.Namespace) -> None:
 # Children sorted by subtree depth (deepest first), then by ID.
 def _handle_deps(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
-    try:
-        ticket_id = resolve_id(args.id, tickets_dir)
-    except (TicketNotFoundError, ValueError) as e:
-        print(str(e), file=sys.stderr)
-        sys.exit(1)
-
+    ticket_id = _resolve_or_exit(args.id, tickets_dir)
     all_tickets = _load_all_tickets(tickets_dir)
     assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
 
@@ -506,17 +474,81 @@ def _handle_deps(args: argparse.Namespace) -> None:
     _print_tree(ticket_id, "", True, True)
 
 
+@dataclasses.dataclass
+class _TreePrinter:
+    """Holds shared state for the recursive ls tree printer."""
+
+    all_tickets: dict[str, Ticket]
+    filtered_ids: set[str]
+    context_parents: set[str]
+    visible_ids: set[str]
+    tickets_dir: Path
+    sort_key: str  # "priority" or "mtime"
+    limit: int | None
+    printed_count: int = dataclasses.field(default=0, init=False)
+
+    def _get_visible_children(self, parent_id: str | None) -> list[str]:
+        result: list[str] = []
+        for tid in sorted(self.visible_ids):
+            t = self.all_tickets.get(tid)
+            if t and t.parent == parent_id:
+                result.append(tid)
+        return result
+
+    def _has_filtered_descendants(self, tid: str) -> bool:
+        if tid in self.filtered_ids:
+            return True
+        for child_id in self._get_visible_children(tid):
+            if self._has_filtered_descendants(child_id):
+                return True
+        return False
+
+    def _sort_children(self, children: list[str]) -> None:
+        if self.sort_key == "mtime":
+            children.sort(key=lambda c: -(self.tickets_dir / f"{c}.md").stat().st_mtime)
+        else:
+            children.sort(key=lambda c: (self.all_tickets[c].priority, c))
+
+    def print_tree(self, tid: str, prefix: str, is_last: bool, is_root: bool) -> None:
+        if self.limit is not None and self.printed_count >= self.limit:
+            return
+
+        t = self.all_tickets.get(tid)
+        if t is None:
+            return
+
+        is_context = tid in self.context_parents and tid not in self.filtered_ids
+
+        if is_root:
+            if is_context:
+                print(_format_ticket_line(t))
+            else:
+                print(_format_ticket_line_with_deps(t))
+                self.printed_count += 1
+        else:
+            connector = "└── " if is_last else "├── "
+            if is_context:
+                print(f"{prefix}{connector}{_format_ticket_line(t)}")
+            else:
+                print(f"{prefix}{connector}{_format_ticket_line_with_deps(t)}")
+                self.printed_count += 1
+
+        children = self._get_visible_children(tid)
+        self._sort_children(children)
+
+        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
+
+        for i, child_id in enumerate(children):
+            if self.limit is not None and self.printed_count >= self.limit:
+                return
+            self.print_tree(child_id, child_prefix, i == len(children) - 1, False)
+
+
 # ── ls ───────────────────────────────────────────────────────
 
 
-# [AI] List tickets with filtering, sorting, tree rendering.
-# Default shows all statuses. --ready/--blocked use dependency analysis.
-# Tree rendering groups children under parents with box-drawing chars.
-def _handle_ls(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
-    # [AI]
-    # Context: ls-archived-flags -- ticket-query requirement=list-source-axis
-    # Intent: source axis is independent of status/resolution filters
+# [AI] ls pipeline stage 1: resolve which ticket store to load based on source axis flags.
+def _select_source(args: argparse.Namespace, tickets_dir: Path) -> dict[str, Ticket]:
     source: TicketSource
     if args.archived:
         source = "archived"
@@ -524,55 +556,58 @@ def _handle_ls(args: argparse.Namespace) -> None:
         source = "all"
     else:
         source = "active"
-    all_tickets = _load_all_tickets(tickets_dir, source=source)
+    return _load_all_tickets(tickets_dir, source=source)
 
-    # [AI]
-    # Context: ls-parent-and-dep-filters -- requirements list-filtered-by-parent + list-filtered-by-dependent
-    # Intent: resolve scope ID against the loaded source set, then narrow the
-    #   candidate set before primary/stackable filters run.
-    scope_root: str | None = None
-    candidate_ids: set[str] | None = None
+
+# [AI]
+# Context: ls-parent-and-dep-filters -- requirements list-filtered-by-parent + list-filtered-by-dependent
+# Intent: resolve scope ID and narrow candidates; returns (candidate_ids, scope_root).
+# candidate_ids=None means "all tickets". scope_root is the --parent anchor for tree context.
+def _apply_scope(
+    args: argparse.Namespace,
+    all_tickets: dict[str, Ticket],
+) -> tuple[set[str] | None, str | None]:
     raw_scope = args.parent or args.dep
-    if raw_scope is not None:
-        if not all_tickets:
-            print(f"ticket '{raw_scope}' not found", file=sys.stderr)
-            sys.exit(1)
-        try:
-            scope_id = _resolve_in_set(raw_scope, all_tickets)
-        except (TicketNotFoundError, ValueError) as e:
-            print(str(e), file=sys.stderr)
-            sys.exit(1)
-        if args.parent:
-            scope_root = scope_id
-            candidate_ids = {scope_id} | _descendants_of(scope_id, all_tickets)
-        else:
-            # --dep: tickets whose deps directly contain scope_id (excludes self)
-            candidate_ids = {
-                tid for tid, t in all_tickets.items() if scope_id in t.deps
-            }
+    if raw_scope is None:
+        return None, None
 
     if not all_tickets:
-        return
+        print(f"ticket '{raw_scope}' not found", file=sys.stderr)
+        sys.exit(1)
 
-    candidates: T.Iterable[Ticket]
-    if candidate_ids is not None:
-        candidates = [all_tickets[tid] for tid in candidate_ids]
-    else:
-        candidates = all_tickets.values()
+    try:
+        scope_id = resolve_id(raw_scope, all_tickets.keys())
+    except (TicketNotFoundError, ValueError) as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
 
-    # -- Filtering --
+    if args.parent:
+        return {scope_id} | _descendants_of(scope_id, all_tickets), scope_id
+    # --dep: tickets whose deps directly contain scope_id (excludes self)
+    return {tid for tid, t in all_tickets.items() if scope_id in t.deps}, None
+
+
+# [AI]
+# Context: ls decomposition -- ticket-query requirement=list-tickets
+# Intent: apply primary filter (ready/blocked/status/all) then stackable
+#   attribute filters (assignee/tag/type), then sort. Single responsibility.
+def _apply_filter(
+    args: argparse.Namespace,
+    candidates: T.Iterable[Ticket],
+    all_tickets: dict[str, Ticket],
+    tickets_dir: Path,
+) -> list[Ticket]:
     filtered: list[Ticket] = []
 
     if args.ready:
         for t in candidates:
-            if is_terminal(t):
+            if is_terminal(t.status):
                 continue
-            if _is_blocked(t, all_tickets):
-                continue
-            filtered.append(t)
+            if not _is_blocked(t, all_tickets):
+                filtered.append(t)
     elif args.blocked:
         for t in candidates:
-            if is_terminal(t):
+            if is_terminal(t.status):
                 continue
             if _is_blocked(t, all_tickets):
                 filtered.append(t)
@@ -581,7 +616,6 @@ def _handle_ls(args: argparse.Namespace) -> None:
     else:
         filtered = list(candidates)
 
-    # Additional filters (stackable)
     if args.assignee:
         filtered = [t for t in filtered if t.assignee == args.assignee]
     if args.tag:
@@ -589,53 +623,44 @@ def _handle_ls(args: argparse.Namespace) -> None:
     if args.type:
         filtered = [t for t in filtered if t.type == args.type]
 
-    # -- Sorting --
     if args.sort == "mtime":
         filtered.sort(key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime)
     else:
-        # Default: priority asc, then id asc
         filtered.sort(key=lambda t: (t.priority, t.id))
 
-    # [AI]
-    # Context: ls-parent-and-dep-filters -- requirement=list-filtered-by-dependent
-    # Intent: --dep renders flat; tree rendering is suppressed because parent/child
-    #   structure is orthogonal to dependency relationships.
-    if args.dep and not args.jsonl:
-        for t in filtered[: args.limit] if args.limit else filtered:
-            print(_format_ticket_line_with_deps(t))
-        return
+    return filtered
 
-    # -- JSONL output --
-    if args.jsonl:
-        for t in filtered[: args.limit] if args.limit else filtered:
-            data = {
-                "id": t.id,
-                "title": t.title,
-                "status": t.status,
-                "type": t.type,
-                "priority": t.priority,
-                "assignee": t.assignee,
-                "deps": t.deps,
-                "links": t.links,
-                "parent": t.parent,
-                "tags": t.tags,
-            }
-            print(json.dumps(data))
-        return
 
-    # -- Tree rendering --
+
+# [AI]
+# Context: ls-parent-and-dep-filters -- requirement=list-filtered-by-dependent
+# Intent: flat output for --dep mode; tree rendering is suppressed because
+#   parent/child structure is orthogonal to dependency relationships.
+def _render_flat(filtered: list[Ticket], args: argparse.Namespace) -> None:
+    for t in filtered[: args.limit] if args.limit else filtered:
+        print(_format_ticket_line_with_deps(t))
+
+
+def _render_jsonl(filtered: list[Ticket], args: argparse.Namespace) -> None:
+    for t in filtered[: args.limit] if args.limit else filtered:
+        print(json.dumps(_ticket_to_dict(t)))
+
+
+# [AI]
+# Context: ls decomposition -- ticket-query requirement=list-tickets
+# Intent: tree output for standard ls. Climbs to context parents so
+#   children always appear under their ancestors. Delegates recursive
+#   rendering to _TreePrinter.
+def _render_tree(
+    filtered: list[Ticket],
+    args: argparse.Namespace,
+    all_tickets: dict[str, Ticket],
+    candidate_ids: set[str] | None,
+    scope_root: str | None,
+    tickets_dir: Path,
+) -> None:
     filtered_ids = {t.id for t in filtered}
 
-    # Build parent->children map for filtered tickets
-    children_map: dict[str | None, list[str]] = {}
-    for t in filtered:
-        children_map.setdefault(t.parent, []).append(t.id)
-
-    # Determine which parents need to be shown as context
-    # (parent not in filtered set but has children in filtered set).
-    # Skip context parents for --ready/--blocked since those filters
-    # explicitly exclude certain tickets -- except --parent always keeps its
-    # named root visible at the tree root.
     # [AI]
     # Context: ls-parent-and-dep-filters -- requirement=list-filtered-by-parent
     # Intent: cap the climb at scope_root so the tree never shows ancestors
@@ -648,7 +673,6 @@ def _handle_ls(args: argparse.Namespace) -> None:
             if t.parent and t.parent not in filtered_ids:
                 pid: str | None = t.parent
                 while pid and pid not in filtered_ids:
-                    # Stay within candidate set when --parent narrows scope.
                     if candidate_ids is not None and pid not in candidate_ids:
                         break
                     context_parents.add(pid)
@@ -660,95 +684,74 @@ def _handle_ls(args: argparse.Namespace) -> None:
                     else:
                         break
     elif scope_root is not None and scope_root not in filtered_ids:
-        # --ready/--blocked under --parent: still show the named root as context
         context_parents.add(scope_root)
 
-    # Root tickets: no parent, or parent not in filtered + context
     visible_ids = filtered_ids | context_parents
 
-    def _get_visible_children(parent_id: str | None) -> list[str]:
-        """Get children of parent_id that are in the visible set."""
-        result: list[str] = []
-        for tid in sorted(visible_ids):
-            t = all_tickets.get(tid)
-            if t and t.parent == parent_id:
-                result.append(tid)
-        return result
+    printer = _TreePrinter(
+        all_tickets=all_tickets,
+        filtered_ids=filtered_ids,
+        context_parents=context_parents,
+        visible_ids=visible_ids,
+        tickets_dir=tickets_dir,
+        sort_key=args.sort,
+        limit=args.limit,
+    )
 
-    # Check if a parent has any filtered descendants
-    def _has_filtered_descendants(tid: str) -> bool:
-        if tid in filtered_ids:
-            return True
-        for child_id in _get_visible_children(tid):
-            if _has_filtered_descendants(child_id):
-                return True
-        return False
-
-    printed_count = 0
-
-    def _print_ls_tree(
-        tid: str,
-        prefix: str,
-        is_last: bool,
-        is_root: bool,
-    ) -> None:
-        nonlocal printed_count
-        if args.limit and printed_count >= args.limit:
-            return
-
-        t = all_tickets.get(tid)
-        if t is None:
-            return
-
-        is_context = tid in context_parents and tid not in filtered_ids
-
-        if is_root:
-            if is_context:
-                print(_format_ticket_line(t))
-            else:
-                print(_format_ticket_line_with_deps(t))
-                printed_count += 1
-        else:
-            connector = "└── " if is_last else "├── "
-            if is_context:
-                print(f"{prefix}{connector}{_format_ticket_line(t)}")
-            else:
-                print(f"{prefix}{connector}{_format_ticket_line_with_deps(t)}")
-                printed_count += 1
-
-        children = _get_visible_children(tid)
-        # Sort children same as main sort
-        if args.sort == "mtime":
-            children.sort(key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime)
-        else:
-            children.sort(key=lambda c: (all_tickets[c].priority, c))
-
-        child_prefix = prefix + ("    " if is_last else "│   ") if not is_root else ""
-
-        for i, child_id in enumerate(children):
-            if args.limit and printed_count >= args.limit:
-                return
-            _print_ls_tree(child_id, child_prefix, i == len(children) - 1, False)
-
-    # Get root-level tickets (no parent or parent not visible)
     roots: list[str] = []
     for tid in visible_ids:
         t = all_tickets.get(tid)
         if t and (t.parent is None or t.parent not in visible_ids):
-            # Only include if has filtered descendants or is filtered itself
-            if _has_filtered_descendants(tid):
+            if printer._has_filtered_descendants(tid):
                 roots.append(tid)
 
-    # Sort roots
     if args.sort == "mtime":
         roots.sort(key=lambda r: -(tickets_dir / f"{r}.md").stat().st_mtime)
     else:
         roots.sort(key=lambda r: (all_tickets[r].priority, r))
 
     for root_id in roots:
-        if args.limit and printed_count >= args.limit:
+        if args.limit is not None and printer.printed_count >= args.limit:
             break
-        _print_ls_tree(root_id, "", True, True)
+        printer.print_tree(root_id, "", True, True)
+
+
+# [AI]
+# Context: ls decomposition -- ticket-query requirement=list-tickets
+# Intent: thin driver; delegates to pipeline stages so each concern is isolated.
+def _handle_ls(args: argparse.Namespace) -> None:
+    # Reject empty-string scope flags before any further processing.
+    if args.dep == "":
+        print("error: --dep requires a non-empty ticket ID", file=sys.stderr)
+        sys.exit(1)
+    if args.parent == "":
+        print("error: --parent requires a non-empty ticket ID", file=sys.stderr)
+        sys.exit(1)
+
+    tickets_dir = find_tickets_dir()
+    all_tickets = _select_source(args, tickets_dir)
+    candidate_ids, scope_root = _apply_scope(args, all_tickets)
+
+    if not all_tickets:
+        return
+
+    candidates: T.Iterable[Ticket]
+    if candidate_ids is not None:
+        candidates = [all_tickets[tid] for tid in candidate_ids]
+    else:
+        candidates = all_tickets.values()
+
+    filtered = _apply_filter(args, candidates, all_tickets, tickets_dir)
+
+    if args.dep and not args.jsonl:
+        _render_flat(filtered, args)
+        return
+
+    if args.jsonl:
+        _render_jsonl(filtered, args)
+        return
+
+    _render_tree(filtered, args, all_tickets, candidate_ids, scope_root, tickets_dir)
 
 
 # ── tags ─────────────────────────────────────────────────────
@@ -761,7 +764,7 @@ def _handle_tags(args: argparse.Namespace) -> None:
 
     tag_counts: Counter[str] = Counter()
     for t in all_tickets.values():
-        if is_terminal(t):
+        if is_terminal(t.status):
             continue
         for tag in t.tags:
             tag_counts[tag] += 1
@@ -793,50 +796,69 @@ def _handle_links(args: argparse.Namespace) -> None:
 
 
 # [AI]
-# Context: archive must not orphan references from active tickets
-# Intent: find all tickets that reference a given ticket via deps, links, or parent
-def _find_referrers(
-    ticket_id: str,
-    tickets: dict[str, Ticket],
-) -> list[str]:
-    referrers: list[str] = []
-    for t in tickets.values():
-        if t.id == ticket_id:
-            continue
-        if ticket_id in t.deps or ticket_id in t.links or t.parent == ticket_id:
-            referrers.append(t.id)
-    return sorted(referrers)
-
-
-# [AI]
 # Context: split-closed-status -- archive command with reference-safety check
-# Intent: refuse to archive terminal (completed/canceled) tickets still referenced
-#   by non-archived tickets. Logic: iteratively shrink the archivable set.
+# Intent: refuse to archive terminal (closed/canceled) tickets still referenced
+#   by non-terminal tickets. Uses a reverse-reference index built once in O(n)
+#   to propagate unarchivable IDs in a single topological pass.
 def _handle_archive(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     all_tickets = _load_all_tickets(tickets_dir)
 
-    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t)}
+    terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t.status)}
 
     if not terminal_ids:
         print("No closed or canceled tickets to archive")
         return
 
-    archivable = set(terminal_ids)
-    changed = True
-    while changed:
-        changed = False
-        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
-        for tid in sorted(archivable):
-            if _find_referrers(tid, remaining):
-                archivable.discard(tid)
-                changed = True
+    # Build reverse-reference index: for each ticket, the set of ticket IDs
+    # that reference it via deps, links, or parent.
+    referrers_of: dict[str, set[str]] = {tid: set() for tid in all_tickets}
+    for t in all_tickets.values():
+        for dep_id in t.deps:
+            if dep_id in referrers_of:
+                referrers_of[dep_id].add(t.id)
+        for link_id in t.links:
+            if link_id in referrers_of:
+                referrers_of[link_id].add(t.id)
+        if t.parent is not None and t.parent in referrers_of:
+            referrers_of[t.parent].add(t.id)
 
-    skipped = terminal_ids - archivable
-    for tid in sorted(skipped):
-        remaining = {k: v for k, v in all_tickets.items() if k not in archivable}
-        refs = _find_referrers(tid, remaining)
-        sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(refs)}\n")
+    # A terminal ticket is archivable if every ticket that references it is
+    # also archivable (i.e. also terminal and not blocked by a non-terminal
+    # referrer). Propagate the "not archivable" constraint in a single pass
+    # using a work-queue: start with all terminal IDs that have at least one
+    # non-terminal referrer.
+    archivable = set(terminal_ids)
+    not_archivable: set[str] = set()
+    work_queue = [
+        tid
+        for tid in terminal_ids
+        if referrers_of[tid] - terminal_ids  # has non-terminal referrers
+    ]
+    visited: set[str] = set()
+    while work_queue:
+        tid = work_queue.pop()
+        if tid in visited:
+            continue
+        visited.add(tid)
+        if tid in archivable:
+            archivable.discard(tid)
+            not_archivable.add(tid)
+            # Propagate: any terminal ticket that this one depends on may now
+            # have an unarchivable (now-not-archivable) referrer.
+            t = all_tickets[tid]
+            for dep_id in t.deps:
+                if dep_id in archivable:
+                    work_queue.append(dep_id)
+            if t.parent is not None and t.parent in archivable:
+                work_queue.append(t.parent)
+
+    # Report skipped tickets and their non-archivable referrers.
+    for tid in sorted(not_archivable):
+        active_refs = sorted(referrers_of[tid] - archivable - not_archivable)
+        if not active_refs:
+            active_refs = sorted(referrers_of[tid])
+        sys.stderr.write(f"Skipped {tid}: referenced by {', '.join(active_refs)}\n")
 
     if not archivable:
         print("No closed or canceled tickets eligible for archiving")

@@ -135,7 +135,7 @@ class SectionedHelpAction(argparse._HelpAction):
         self,
         parser: argparse.ArgumentParser,
         namespace: argparse.Namespace,
-        values: T.Any,
+        values: str | T.Sequence[str] | None,
         option_string: str | None = None,
     ) -> T.NoReturn:
         sys.stdout.write(HELP_TEXT)

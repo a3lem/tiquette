@@ -9,6 +9,7 @@ from tiquette.store import (
     Ticket,
     _abbreviate,
     find_tickets_dir,
+    iter_tickets,
     read_ticket,
     write_ticket,
 )
@@ -86,9 +87,8 @@ def _apply_renames(
         tuple[Path, Ticket, str]
     ] = []  # (containing_dir, updated_ticket, original_id)
     for d in dirs:
-        for path in d.glob("*.md"):
-            tid = path.stem
-            ticket = read_ticket(tid, d)
+        for ticket in iter_tickets(d):
+            tid = ticket.id
             new_id = renames.get(tid, tid)
             new_deps = [renames.get(x, x) for x in ticket.deps]
             new_links = [renames.get(x, x) for x in ticket.links]

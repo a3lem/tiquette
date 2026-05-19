@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from tiquette.store import find_tickets_dir, read_ticket
+from tiquette.store import find_tickets_dir, load_all_tickets
 
 
 # [AI]
@@ -22,17 +22,17 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _collect_problems(tickets_dir: Path) -> list[Problem]:
-    active_ids = {p.stem for p in tickets_dir.glob("*.md")}
-
+    all_tickets = load_all_tickets(tickets_dir, source="all")
     archive_dir = tickets_dir / "archive"
     archived_ids: set[str] = set()
     if archive_dir.is_dir():
         archived_ids = {p.stem for p in archive_dir.glob("*.md")}
+    active_ids = set(all_tickets.keys()) - archived_ids
 
     problems: list[Problem] = []
 
     for ticket_id in sorted(active_ids):
-        ticket = read_ticket(ticket_id, tickets_dir)
+        ticket = all_tickets[ticket_id]
 
         for dep_id in ticket.deps:
             if dep_id in active_ids:

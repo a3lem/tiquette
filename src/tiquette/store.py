@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import os
 import secrets
+import sys
 import typing as T
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,8 +14,17 @@ TICKETS_DIR_NAME = ".tickets"
 
 # -- Frontmatter field order (controls serialization order) --
 _FIELD_ORDER = [
-    "id", "status", "type", "priority", "assignee",
-    "deps", "links", "parent", "tags", "xref", "created",
+    "id",
+    "status",
+    "type",
+    "priority",
+    "assignee",
+    "deps",
+    "links",
+    "parent",
+    "tags",
+    "xref",
+    "created",
 ]
 
 # -- List-typed fields (serialized as YAML flow style) --
@@ -21,25 +33,27 @@ _LIST_FIELDS = {"deps", "links", "tags"}
 # -- Nullable scalar fields (serialized as "null" when None) --
 _NULLABLE_FIELDS = {"assignee", "parent", "xref"}
 
+
 # [AI]
 # Context: cli-redesign-v1.2 -- ticket-store requirement=ticket-file-format
 # Intent: single source of truth for status vocabulary. v1.2 renames the
 #   terminal `completed` → `closed` so the stored value matches the verb (`close`).
-class Status:
-    OPEN: T.Final = "open"
-    IN_PROGRESS: T.Final = "in_progress"
-    CLOSED: T.Final = "closed"
-    CANCELED: T.Final = "canceled"
-    ALL: T.Final[tuple[str, ...]] = ("open", "in_progress", "closed", "canceled")
-    TERMINAL: T.Final[frozenset[str]] = frozenset({"closed", "canceled"})
+class Status(enum.StrEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    CLOSED = "closed"
+    CANCELED = "canceled"
 
+
+# Non-member class-level constant: statuses from which no lifecycle transition is expected.
+Status.TERMINAL = frozenset({Status.CLOSED, Status.CANCELED})  # type: ignore[attr-defined]
 
 # -- Terminal statuses (no further lifecycle transitions expected) --
-TERMINAL_STATUSES: frozenset[str] = Status.TERMINAL
+TERMINAL_STATUSES: frozenset[Status] = Status.TERMINAL  # type: ignore[attr-defined]
 
 
-def is_terminal(t: "Ticket") -> bool:
-    return t.status in Status.TERMINAL
+def is_terminal(status: Status) -> bool:
+    return status in Status.TERMINAL  # type: ignore[attr-defined]
 
 
 # ── Exceptions ──────────────────────────────────────────────
@@ -47,16 +61,25 @@ def is_terminal(t: "Ticket") -> bool:
 
 class TicketsNotFoundError(Exception):
     """Raised when no .tickets/ directory can be located."""
+
     pass
 
 
 class TicketNotFoundError(Exception):
     """Raised when a specific ticket file does not exist."""
+
     pass
 
 
 class AmbiguousIDError(ValueError):
     """Raised when a partial ID matches multiple tickets."""
+
+    pass
+
+
+class TicketParseError(ValueError):
+    """Raised when a ticket file cannot be parsed (malformed content)."""
+
     pass
 
 
@@ -126,7 +149,7 @@ class FieldChanges:
 class Ticket:
     id: str
     title: str
-    status: str = "open"
+    status: Status = Status.OPEN
     type: str = "task"
     priority: int = 2
     assignee: str | None = None
@@ -233,8 +256,11 @@ def generate_id(tickets_dir: Path) -> str:
 
 # ── Serialization helpers ───────────────────────────────────
 
+# Union of all types that can appear as a parsed frontmatter value.
+_FrontmatterValue = Status | str | int | list[str] | None
 
-def _format_yaml_value(key: str, value: T.Any) -> str:
+
+def _format_yaml_value(key: str, value: _FrontmatterValue) -> str:
     """Format a single frontmatter value as a YAML string."""
     if key in _LIST_FIELDS:
         assert isinstance(value, list)
@@ -262,7 +288,7 @@ def _serialize_frontmatter(ticket: Ticket) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _parse_yaml_value(key: str, raw: str) -> T.Any:
+def _parse_yaml_value(key: str, raw: str) -> _FrontmatterValue:
     """Parse a single YAML value back into Python."""
     raw = raw.strip()
     if key in _LIST_FIELDS:
@@ -275,12 +301,14 @@ def _parse_yaml_value(key: str, raw: str) -> T.Any:
         return None
     if key == "priority":
         return int(raw)
+    if key == "status":
+        return Status(raw)
     return raw
 
 
-def _parse_frontmatter(text: str) -> dict[str, T.Any]:
+def _parse_frontmatter(text: str) -> dict[str, _FrontmatterValue]:
     """Parse YAML frontmatter from between --- delimiters."""
-    result: dict[str, T.Any] = {}
+    result: dict[str, _FrontmatterValue] = {}
     for line in text.strip().splitlines():
         if ": " in line:
             key, _, value = line.partition(": ")
@@ -319,11 +347,59 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
 
     # Split on --- delimiters
     parts = content.split("---\n")
-    assert len(parts) >= 3, f"malformed ticket file: {file_path}"
+    if len(parts) < 3:
+        raise TicketParseError(
+            f"malformed ticket file (missing frontmatter delimiters): {file_path}"
+        )
     fm_raw = parts[1]
     body = "---\n".join(parts[2:])  # rejoin in case body contains ---
 
     fields = _parse_frontmatter(fm_raw)
+
+    # Cross-check: frontmatter id must match the filename.
+    fm_id = fields.get("id")
+    if fm_id is not None and fm_id != ticket_id:
+        raise TicketParseError(
+            f"frontmatter id {fm_id!r} does not match filename {ticket_id!r}: {file_path}"
+        )
+
+    # Coerce and validate each known field.
+    raw_status = fields.get("status", Status.OPEN)
+    if not isinstance(raw_status, Status):
+        try:
+            raw_status = Status(str(raw_status))
+        except ValueError:
+            raise TicketParseError(f"invalid status {raw_status!r} in {file_path}")
+    raw_priority = fields.get("priority", 2)
+    if not isinstance(raw_priority, int):
+        try:
+            raw_priority = int(str(raw_priority))
+        except ValueError:
+            raise TicketParseError(f"invalid priority {raw_priority!r} in {file_path}")
+    raw_assignee = fields.get("assignee")
+    if raw_assignee is not None and not isinstance(raw_assignee, str):
+        raise TicketParseError(f"invalid assignee {raw_assignee!r} in {file_path}")
+    raw_parent = fields.get("parent")
+    if raw_parent is not None and not isinstance(raw_parent, str):
+        raise TicketParseError(f"invalid parent {raw_parent!r} in {file_path}")
+    raw_xref = fields.get("xref")
+    if raw_xref is not None and not isinstance(raw_xref, str):
+        raise TicketParseError(f"invalid xref {raw_xref!r} in {file_path}")
+    raw_type = fields.get("type", "task")
+    if not isinstance(raw_type, str):
+        raise TicketParseError(f"invalid type {raw_type!r} in {file_path}")
+    raw_created = fields.get("created", "")
+    if not isinstance(raw_created, str):
+        raise TicketParseError(f"invalid created {raw_created!r} in {file_path}")
+    raw_deps = fields.get("deps", [])
+    if not isinstance(raw_deps, list):
+        raise TicketParseError(f"invalid deps {raw_deps!r} in {file_path}")
+    raw_links = fields.get("links", [])
+    if not isinstance(raw_links, list):
+        raise TicketParseError(f"invalid links {raw_links!r} in {file_path}")
+    raw_tags = fields.get("tags", [])
+    if not isinstance(raw_tags, list):
+        raise TicketParseError(f"invalid tags {raw_tags!r} in {file_path}")
 
     # Extract title from first # heading in body
     title = "Untitled"
@@ -340,10 +416,30 @@ def read_ticket(ticket_id: str, tickets_dir: Path) -> Ticket:
         if desc_text:
             description = desc_text
 
+    # Filter self-references from links and deps.
+    if ticket_id in raw_links:
+        sys.stderr.write(f"warning: {file_path}: self-link removed from links list\n")
+        raw_links = [lid for lid in raw_links if lid != ticket_id]
+    if ticket_id in raw_deps:
+        sys.stderr.write(
+            f"warning: {file_path}: self-reference removed from deps list\n"
+        )
+        raw_deps = [did for did in raw_deps if did != ticket_id]
+
     return Ticket(
+        id=ticket_id,
         title=title,
         description=description,
-        **fields,
+        status=raw_status,
+        type=raw_type,
+        priority=raw_priority,
+        assignee=raw_assignee,
+        deps=raw_deps,
+        links=raw_links,
+        parent=raw_parent,
+        tags=raw_tags,
+        xref=raw_xref,
+        created=raw_created,
     )
 
 
@@ -375,6 +471,46 @@ def list_ticket_ids(
     return sorted(active | archived)
 
 
+def iter_tickets(
+    tickets_dir: Path,
+    *,
+    include_archive: bool = False,
+) -> Iterator[Ticket]:
+    """Yield every ticket in `tickets_dir` (and optionally its archive/).
+
+    Yields active tickets first, then archived (if `include_archive` is True).
+    """
+    for path in sorted(tickets_dir.glob("*.md")):
+        yield read_ticket(path.stem, tickets_dir)
+    if include_archive:
+        archive_dir = tickets_dir / "archive"
+        if archive_dir.is_dir():
+            for path in sorted(archive_dir.glob("*.md")):
+                yield read_ticket(path.stem, archive_dir)
+
+
+def load_all_tickets(
+    tickets_dir: Path,
+    source: TicketSource = "active",
+) -> dict[str, Ticket]:
+    """Load all tickets from the requested source(s) into a dict keyed by ID.
+
+    `source="active"` (default) loads only top-level tickets.
+    `source="archived"` loads only archived tickets.
+    `source="all"` loads both; on ID collision active wins.
+    """
+    result: dict[str, Ticket] = {}
+    if source in ("archived", "all"):
+        archive_dir = tickets_dir / "archive"
+        if archive_dir.is_dir():
+            for path in sorted(archive_dir.glob("*.md")):
+                result[path.stem] = read_ticket(path.stem, archive_dir)
+    if source in ("active", "all"):
+        for path in sorted(tickets_dir.glob("*.md")):
+            result[path.stem] = read_ticket(path.stem, tickets_dir)
+    return result
+
+
 # ── Cycle detection ─────────────────────────────────────────
 
 
@@ -383,33 +519,37 @@ def list_ticket_ids(
 # Intent: dependency cycle detection. Lifted from the old `relationships`
 #   command module so `edit --dep` / `create --dep` can use it.
 def build_dep_graph(tickets_dir: Path) -> dict[str, list[str]]:
-    graph: dict[str, list[str]] = {}
-    for path in tickets_dir.glob("*.md"):
-        tid = path.stem
-        t = read_ticket(tid, tickets_dir)
-        graph[tid] = list(t.deps)
-    return graph
+    return {t.id: list(t.deps) for t in iter_tickets(tickets_dir)}
 
 
 def has_dep_cycle(
-    graph: dict[str, list[str]],
-    source: str,
-    new_deps: list[str],
+    graph: Mapping[str, list[str]],
+    extra_edges: Mapping[str, Iterable[str]],
 ) -> bool:
-    original = graph.get(source, [])
-    graph[source] = list(set(original + new_deps))
-    visited: set[str] = set()
-    stack: list[str] = list(new_deps)
-    while stack:
-        node = stack.pop()
-        if node == source:
-            graph[source] = original
-            return True
-        if node in visited:
-            continue
-        visited.add(node)
-        stack.extend(graph.get(node, []))
-    graph[source] = original
+    """Return True if adding extra_edges to graph introduces a cycle.
+
+    Pure predicate: does not mutate graph or extra_edges. Walk the virtual
+    union of graph + extra_edges via DFS for each source node in extra_edges.
+    """
+
+    def _neighbours(node: str) -> list[str]:
+        base = list(graph.get(node, []))
+        extra = list(extra_edges.get(node, []))
+        return list(set(base + extra))
+
+    for source in extra_edges:
+        # Only the newly-added edges are the entry points for cycle detection.
+        seed_deps = list(extra_edges[source])
+        visited: set[str] = set()
+        stack: list[str] = seed_deps[:]
+        while stack:
+            node = stack.pop()
+            if node == source:
+                return True
+            if node in visited:
+                continue
+            visited.add(node)
+            stack.extend(_neighbours(node))
     return False
 
 
@@ -446,6 +586,7 @@ def has_parent_cycle(
 
 class FieldChangeError(ValueError):
     """Raised when `apply_field_changes` rejects the requested changes."""
+
     pass
 
 
@@ -462,24 +603,30 @@ def _append_note(ticket: Ticket, text: str, timestamp: str) -> None:
         ticket.description = body.rstrip() + sep + "## Notes\n\n" + note_line + "\n"
 
 
-# [AI]
-# Context: cli-redesign-v1.2 -- ticket-edit
-# Intent: apply a FieldChanges to an in-memory Ticket. Validates cycles,
-#   resolves dep/link/parent targets exist, handles symmetric link writes.
-#   Returns a list of (ticket, dir) writes the caller must perform; the
-#   caller writes them atomically (all-or-nothing).
-def apply_field_changes(
+@dataclasses.dataclass
+class _ValidatedChanges:
+    """Resolved, cycle-checked data produced by _validate_changes."""
+
+    changes: FieldChanges  # mutations in original form (notes, unset_fields, etc.)
+    resolved_add_deps: list[str]
+    resolved_remove_deps: list[str]
+    resolved_add_links: list[str]
+    resolved_remove_links: list[str]
+    resolved_parent: str | None  # None means "no change", not "unset"
+    link_targets: dict[str, Ticket]
+    unlink_targets: dict[str, Ticket]
+
+
+def _validate_changes(
     ticket: Ticket,
     changes: FieldChanges,
     tickets_dir: Path,
-    *,
-    note_timestamp: str | None = None,
-) -> list[Ticket]:
-    """Mutate `ticket` per `changes`. Return additional tickets that must
-    also be written (for symmetric link/unlink). Raises FieldChangeError
-    on validation failure; on failure no ticket has been mutated yet.
+) -> _ValidatedChanges:
+    """Validate and resolve all IDs in `changes` for `ticket`.
+
+    Raises FieldChangeError on any conflict, resolution failure, or cycle.
+    Does not mutate `ticket`.
     """
-    # Validate first (no mutation) — atomicity
     conflicts = changes.conflicting_set_and_unset()
     if conflicts:
         raise FieldChangeError(
@@ -493,7 +640,7 @@ def apply_field_changes(
     #   the on-disk representation) sees canonical IDs only.
     def _resolve(partial: str) -> str:
         try:
-            return resolve_id(partial, tickets_dir)
+            return resolve_id_in_dir(partial, tickets_dir)
         except (TicketNotFoundError, AmbiguousIDError) as exc:
             raise FieldChangeError(str(exc)) from exc
 
@@ -501,46 +648,65 @@ def apply_field_changes(
     # the ticket's actual deps/links downstream, so an unknown ID is a no-op.
     def _resolve_optional(partial: str) -> str:
         try:
-            return resolve_id(partial, tickets_dir)
+            return resolve_id_in_dir(partial, tickets_dir)
         except (TicketNotFoundError, AmbiguousIDError):
             return partial
 
-    changes.add_deps = [_resolve(d) for d in changes.add_deps]
-    changes.remove_deps = [_resolve_optional(d) for d in changes.remove_deps]
-    changes.add_links = [_resolve(link) for link in changes.add_links]
-    changes.remove_links = [_resolve_optional(link) for link in changes.remove_links]
-    if changes.parent is not None:
-        changes.parent = _resolve(changes.parent)
+    resolved_add_deps = [_resolve(d) for d in changes.add_deps]
+    resolved_remove_deps = [_resolve_optional(d) for d in changes.remove_deps]
+    resolved_add_links = [_resolve(link) for link in changes.add_links]
+    resolved_remove_links = [_resolve_optional(link) for link in changes.remove_links]
+    resolved_parent = _resolve(changes.parent) if changes.parent is not None else None
 
     # Load link targets (existence already proven by resolve)
     link_targets: dict[str, Ticket] = {}
-    for link_id in changes.add_links:
+    for link_id in resolved_add_links:
         if link_id == ticket.id:
             continue
         link_targets[link_id] = read_ticket(link_id, tickets_dir)
     unlink_targets: dict[str, Ticket] = {}
-    for link_id in changes.remove_links:
+    for link_id in resolved_remove_links:
         if link_id == ticket.id:
             continue
         unlink_targets[link_id] = read_ticket(link_id, tickets_dir)
 
     # Parent cycle check (existence already proven by resolve)
-    if changes.parent is not None:
-        if has_parent_cycle(ticket.id, changes.parent, tickets_dir):
+    if resolved_parent is not None:
+        if has_parent_cycle(ticket.id, resolved_parent, tickets_dir):
             raise FieldChangeError(
-                f"setting parent of '{ticket.id}' to '{changes.parent}' would create a cycle"
+                f"setting parent of '{ticket.id}' to '{resolved_parent}' would create a cycle"
             )
 
     # Dep cycle check
-    new_deps_set = [d for d in changes.add_deps if d not in ticket.deps]
-    if new_deps_set:
+    new_deps = [d for d in resolved_add_deps if d not in ticket.deps]
+    if new_deps:
         graph = build_dep_graph(tickets_dir)
-        if has_dep_cycle(graph, ticket.id, new_deps_set):
+        if has_dep_cycle(graph, {ticket.id: new_deps}):
             raise FieldChangeError(
                 f"adding dependency to '{ticket.id}' would create a cycle"
             )
 
-    # ── Mutations (validation passed) ──
+    return _ValidatedChanges(
+        changes=changes,
+        resolved_add_deps=resolved_add_deps,
+        resolved_remove_deps=resolved_remove_deps,
+        resolved_add_links=resolved_add_links,
+        resolved_remove_links=resolved_remove_links,
+        resolved_parent=resolved_parent,
+        link_targets=link_targets,
+        unlink_targets=unlink_targets,
+    )
+
+
+def _apply_validated(
+    ticket: Ticket,
+    validated: _ValidatedChanges,
+    *,
+    note_timestamp: str | None = None,
+) -> list[Ticket]:
+    """Apply pre-validated changes to `ticket`. Only mutates; no validation."""
+    changes = validated.changes
+
     if changes.title is not None:
         ticket.title = changes.title
     if changes.description is not None:
@@ -553,8 +719,8 @@ def apply_field_changes(
         ticket.assignee = changes.assignee
     if changes.xref is not None:
         ticket.xref = changes.xref
-    if changes.parent is not None:
-        ticket.parent = changes.parent
+    if validated.resolved_parent is not None:
+        ticket.parent = validated.resolved_parent
 
     # Tag add/remove
     existing_tags = set(ticket.tags)
@@ -568,28 +734,28 @@ def apply_field_changes(
 
     # Dep add/remove
     existing_deps = set(ticket.deps)
-    for dep in changes.add_deps:
+    for dep in validated.resolved_add_deps:
         if dep not in existing_deps:
             ticket.deps.append(dep)
             existing_deps.add(dep)
-    if changes.remove_deps:
-        to_remove = set(changes.remove_deps)
+    if validated.resolved_remove_deps:
+        to_remove = set(validated.resolved_remove_deps)
         ticket.deps = [d for d in ticket.deps if d not in to_remove]
 
     # Link add/remove (symmetric)
     extra_writes: list[Ticket] = []
     existing_links = set(ticket.links)
-    for link_id, target in link_targets.items():
+    for link_id, target in validated.link_targets.items():
         if link_id not in existing_links:
             ticket.links.append(link_id)
             existing_links.add(link_id)
         if ticket.id not in target.links:
             target.links.append(ticket.id)
             extra_writes.append(target)
-    if changes.remove_links:
-        to_remove = set(changes.remove_links)
+    if validated.resolved_remove_links:
+        to_remove = set(validated.resolved_remove_links)
         ticket.links = [link for link in ticket.links if link not in to_remove]
-        for link_id, target in unlink_targets.items():
+        for link_id, target in validated.unlink_targets.items():
             if ticket.id in target.links:
                 target.links.remove(ticket.id)
                 if target not in extra_writes:
@@ -612,14 +778,37 @@ def apply_field_changes(
     return extra_writes
 
 
+# [AI]
+# Context: cli-redesign-v1.2 -- ticket-edit
+# Intent: apply a FieldChanges to an in-memory Ticket. Validates cycles,
+#   resolves dep/link/parent targets exist, handles symmetric link writes.
+#   Returns a list of (ticket, dir) writes the caller must perform; the
+#   caller writes them atomically (all-or-nothing).
+def apply_field_changes(
+    ticket: Ticket,
+    changes: FieldChanges,
+    tickets_dir: Path,
+    *,
+    note_timestamp: str | None = None,
+) -> list[Ticket]:
+    """Validate `changes` then mutate `ticket`. Return additional tickets that
+    must also be written (for symmetric link/unlink). Raises FieldChangeError
+    on validation failure; on failure no ticket has been mutated yet.
+    """
+    validated = _validate_changes(ticket, changes, tickets_dir)
+    return _apply_validated(ticket, validated, note_timestamp=note_timestamp)
+
+
 # ── ID resolution ──────────────────────────────────────────
 
 
 # [AI]
 # Context: id-resolution requirement=partial-id-matching
-# Intent: resolve partial IDs by exact match first, then unique substring
-def resolve_id(partial: str, tickets_dir: Path) -> str:
-    all_ids = sorted(p.stem for p in tickets_dir.glob("*.md"))
+# Intent: resolve partial IDs by exact match first, then unique substring.
+#   Accepts any iterable of candidate IDs so callers can scope to a pre-loaded
+#   set (e.g. archived+active combined) without another filesystem scan.
+def resolve_id(partial: str, candidates: Iterable[str]) -> str:
+    all_ids = sorted(candidates)
 
     # Exact match takes precedence unconditionally
     if partial in all_ids:
@@ -637,3 +826,8 @@ def resolve_id(partial: str, tickets_dir: Path) -> str:
     raise AmbiguousIDError(
         f"ambiguous ID '{partial}' matches multiple tickets: {matches}"
     )
+
+
+def resolve_id_in_dir(partial: str, tickets_dir: Path) -> str:
+    """Resolve a partial ticket ID against .md files in `tickets_dir`."""
+    return resolve_id(partial, (p.stem for p in tickets_dir.glob("*.md")))

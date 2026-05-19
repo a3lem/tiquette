@@ -6,6 +6,23 @@
 - changed: `--priority` argparse argument now uses `type=int, choices=range(5)` instead of string choices; removed `VALID_PRIORITIES` constant and manual `int()` conversion in `namespace_to_field_changes` (tiqt-6695)
 - fixed: `_subtree_depth` in `tq show` tree view now memoizes results, preventing exponential blowup on wide/shared dependency subtrees (tiqt-6478)
 - fixed: replaced private `T._GenericAlias` annotation on all five `register()` signatures with `argparse._SubParsersAction[argparse.ArgumentParser]`; removed `type: ignore` comments and unused `import typing as T` (tiqt-d348)
+- changed: `Status` converted from plain string-constant class to `StrEnum`; `Ticket.status` is now typed `Status`; `_checkbox` match is now exhaustive over enum members (tiqt-43f8)
+- changed: `is_terminal` now accepts `status: Status` instead of a full `Ticket`; callers updated to pass `t.status` (tiqt-77ba)
+- added: `TicketParseError` exception; `read_ticket` now raises it instead of asserting on malformed files (tiqt-8d9f)
+- changed: replaced `T.Any` annotations in `store.py` and `cli.py` with concrete types (`_FrontmatterValue` union, `str | Sequence[str] | None`) (tiqt-66f7)
+- fixed: `read_ticket` validates frontmatter schema explicitly; raises `TicketParseError` on id mismatch, unknown types, or missing fields instead of crashing with `TypeError` (tiqt-4e3d)
+- fixed: `read_ticket` now filters self-links and self-deps on read, emitting a warning to stderr (tiqt-6deb)
+- changed: `has_dep_cycle` is now a pure predicate; signature changed to `(graph, extra_edges)` -- no longer mutates the graph (tiqt-963a)
+- changed: `apply_field_changes` split into `_validate_changes` + `_apply_validated`; validation and mutation are now structurally separate (tiqt-bbd8)
+- added: `iter_tickets` and `load_all_tickets` in `store.py`; all glob-and-parse loops in lifecycle, autofix, validate, and query now route through them (tiqt-c629)
+- improved: `_find_open_descendants` returns `dict[str, Ticket]`; `_handle_status` reuses those loaded tickets for the mutation pass instead of re-reading from disk (tiqt-d5f1)
+- changed: `resolve_id` now accepts `Iterable[str]` candidates; `resolve_id_in_dir(partial, tickets_dir)` is the directory-based wrapper; `_resolve_in_set` in query.py removed (tiqt-a713)
+- added: `_resolve_or_exit` helper in query.py; replaces four identical try/except blocks around resolve_id_in_dir (tiqt-86e8)
+- fixed: `_is_blocked` now treats dangling (unknown) dep IDs as blocking, so `tq ls --ready` and `tq validate` agree on what is actionable (tiqt-5781)
+- added: `_ticket_to_dict` helper in query.py; replaces three near-identical JSON serialization literals in show, info, and ls --jsonl (tiqt-07e1)
+- fixed: `tq ls --dep ""` and `--parent ""` now exit with a clear error instead of silently producing all tickets (tiqt-0fd3)
+- improved: `tq archive` builds a reverse-reference index once (O(n)) and propagates the "not archivable" constraint in a single pass, replacing the O(n²) iterative convergence loop (tiqt-ea43)
+- changed: `_handle_ls` decomposed into `_select_source`, `_apply_scope`, `_apply_filter`, `_render_flat`, `_render_jsonl`, and `_render_tree`; duplicate sort logic eliminated; `_TreePrinter` dataclass replaces `nonlocal` closure (tiqt-8288, tiqt-ed8c)
 
 ## v0.2.0 – 2026-05-17
 
