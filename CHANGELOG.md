@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- changed: `Status` converted from plain string-constant class to `StrEnum`; `Ticket.status` is now typed `Status`; `_checkbox` match is now exhaustive over enum members
+
 ## v0.2.0 – 2026-05-17
 
 - changed (BREAKING): per-field mutation verbs removed: `tag`, `untag`, `dep`, `undep`, `nest`, `unnest`, `link`, `unlink`, `assign`, `change-prio`, `change-type`, `describe`, `add-note`, `xref`. No aliases.

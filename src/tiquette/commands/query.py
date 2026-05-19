@@ -10,6 +10,7 @@ from pathlib import Path
 
 from tiquette.store import (
     AmbiguousIDError,
+    Status,
     Ticket,
     TicketNotFoundError,
     TicketSource,
@@ -24,7 +25,7 @@ from tiquette.store import (
 # [AI] Query commands: show, info, path, deps, ls, tags, archive.
 # ls has complex filtering with validation and mutual exclusion.
 
-VALID_STATUSES = ("open", "in_progress", "closed", "canceled")
+VALID_STATUSES = tuple(s.value for s in Status)
 
 
 # [AI]
@@ -41,6 +42,8 @@ def _validate_status(value: str) -> str:
             f"invalid choice: {value!r} (choose from {', '.join(repr(s) for s in VALID_STATUSES)})"
         )
     return value
+
+
 VALID_SORTS = ("priority", "mtime")
 
 
@@ -82,7 +85,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # [AI] ls: many optional filters, mutual exclusion for --ready/--blocked
     p_ls = subparsers.add_parser("ls", help="List tickets")
     p_ls.add_argument(
-        "-s", "--status", type=_validate_status,
+        "-s",
+        "--status",
+        type=_validate_status,
         help="Filter by status (open|in_progress|closed|canceled)",
     )
 
@@ -95,12 +100,15 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # Intent: source axis (active|archived|all); -a mirrors `ls -a`
     source_group = p_ls.add_mutually_exclusive_group()
     source_group.add_argument(
-        "-a", "--all", action="store_true",
+        "-a",
+        "--all",
+        action="store_true",
         dest="all_sources",
         help="Include archived tickets",
     )
     source_group.add_argument(
-        "--archived", action="store_true",
+        "--archived",
+        action="store_true",
         help="Show only archived tickets",
     )
 
@@ -119,15 +127,19 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     # Intent: scope `ls` to a subtree (--parent) or to direct dependents of a ticket (--dep)
     scope_group = p_ls.add_mutually_exclusive_group()
     scope_group.add_argument(
-        "--parent", metavar="ID",
+        "--parent",
+        metavar="ID",
         help="Show <ID> and its descendants as a tree",
     )
     scope_group.add_argument(
-        "--dep", metavar="ID",
+        "--dep",
+        metavar="ID",
         help="Show tickets that directly depend on <ID> (flat list)",
     )
     p_ls.add_argument(
-        "--sort", choices=VALID_SORTS, default="priority",
+        "--sort",
+        choices=VALID_SORTS,
+        default="priority",
         help="Sort by field (priority|mtime)",
     )
     p_ls.add_argument("--limit", type=_positive_int, help="Limit results")
@@ -143,7 +155,9 @@ def register(subparsers: T._GenericAlias) -> None:  # type: ignore[name-defined]
     p_links.set_defaults(func=_handle_links)
 
     # archive (no args)
-    p_archive = subparsers.add_parser("archive", help="Move closed and canceled tickets to archive")
+    p_archive = subparsers.add_parser(
+        "archive", help="Move closed and canceled tickets to archive"
+    )
     p_archive.set_defaults(func=_handle_archive)
 
 
@@ -176,16 +190,14 @@ def _load_all_tickets(
 #   `completed` → `closed`.
 def _checkbox(t: Ticket) -> str:
     match t.status:
-        case "open":
+        case Status.OPEN:
             return "[ ]"
-        case "in_progress":
+        case Status.IN_PROGRESS:
             return "[/]"
-        case "closed":
+        case Status.CLOSED:
             return "[x]"
-        case "canceled":
+        case Status.CANCELED:
             return "[~]"
-        case _:
-            return "[?]"
 
 
 def _format_ticket_line(t: Ticket) -> str:
@@ -316,7 +328,8 @@ def _handle_show(args: argparse.Namespace) -> None:
 
     # Blockers: deps that are not yet in a terminal state
     open_deps = [
-        dep_id for dep_id in ticket.deps
+        dep_id
+        for dep_id in ticket.deps
         if dep_id in all_tickets and not is_terminal(all_tickets[dep_id])
     ]
     if open_deps:
@@ -327,10 +340,7 @@ def _handle_show(args: argparse.Namespace) -> None:
         print()
 
     # Blocking: tickets that depend on this one
-    blocking = [
-        t for t in all_tickets.values()
-        if ticket_id in t.deps
-    ]
+    blocking = [t for t in all_tickets.values() if ticket_id in t.deps]
     if blocking:
         print("## Blocking\n")
         for t in sorted(blocking, key=lambda x: x.id):
@@ -572,9 +582,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
 
     # -- Sorting --
     if args.sort == "mtime":
-        filtered.sort(
-            key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime
-        )
+        filtered.sort(key=lambda t: -(tickets_dir / f"{t.id}.md").stat().st_mtime)
     else:
         # Default: priority asc, then id asc
         filtered.sort(key=lambda t: (t.priority, t.id))
@@ -584,13 +592,13 @@ def _handle_ls(args: argparse.Namespace) -> None:
     # Intent: --dep renders flat; tree rendering is suppressed because parent/child
     #   structure is orthogonal to dependency relationships.
     if args.dep and not args.jsonl:
-        for t in (filtered[: args.limit] if args.limit else filtered):
+        for t in filtered[: args.limit] if args.limit else filtered:
             print(_format_ticket_line_with_deps(t))
         return
 
     # -- JSONL output --
     if args.jsonl:
-        for t in filtered[:args.limit] if args.limit else filtered:
+        for t in filtered[: args.limit] if args.limit else filtered:
             data = {
                 "id": t.id,
                 "title": t.title,
@@ -702,9 +710,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
         children = _get_visible_children(tid)
         # Sort children same as main sort
         if args.sort == "mtime":
-            children.sort(
-                key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime
-            )
+            children.sort(key=lambda c: -(tickets_dir / f"{c}.md").stat().st_mtime)
         else:
             children.sort(key=lambda c: (all_tickets[c].priority, c))
 
@@ -781,7 +787,8 @@ def _handle_links(args: argparse.Namespace) -> None:
 # Context: archive must not orphan references from active tickets
 # Intent: find all tickets that reference a given ticket via deps, links, or parent
 def _find_referrers(
-    ticket_id: str, tickets: dict[str, Ticket],
+    ticket_id: str,
+    tickets: dict[str, Ticket],
 ) -> list[str]:
     referrers: list[str] = []
     for t in tickets.values():

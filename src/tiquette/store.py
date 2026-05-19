@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import os
 import secrets
 import typing as T
@@ -11,8 +12,17 @@ TICKETS_DIR_NAME = ".tickets"
 
 # -- Frontmatter field order (controls serialization order) --
 _FIELD_ORDER = [
-    "id", "status", "type", "priority", "assignee",
-    "deps", "links", "parent", "tags", "xref", "created",
+    "id",
+    "status",
+    "type",
+    "priority",
+    "assignee",
+    "deps",
+    "links",
+    "parent",
+    "tags",
+    "xref",
+    "created",
 ]
 
 # -- List-typed fields (serialized as YAML flow style) --
@@ -21,25 +31,27 @@ _LIST_FIELDS = {"deps", "links", "tags"}
 # -- Nullable scalar fields (serialized as "null" when None) --
 _NULLABLE_FIELDS = {"assignee", "parent", "xref"}
 
+
 # [AI]
 # Context: cli-redesign-v1.2 -- ticket-store requirement=ticket-file-format
 # Intent: single source of truth for status vocabulary. v1.2 renames the
 #   terminal `completed` → `closed` so the stored value matches the verb (`close`).
-class Status:
-    OPEN: T.Final = "open"
-    IN_PROGRESS: T.Final = "in_progress"
-    CLOSED: T.Final = "closed"
-    CANCELED: T.Final = "canceled"
-    ALL: T.Final[tuple[str, ...]] = ("open", "in_progress", "closed", "canceled")
-    TERMINAL: T.Final[frozenset[str]] = frozenset({"closed", "canceled"})
+class Status(enum.StrEnum):
+    OPEN = "open"
+    IN_PROGRESS = "in_progress"
+    CLOSED = "closed"
+    CANCELED = "canceled"
 
+
+# Non-member class-level constant: statuses from which no lifecycle transition is expected.
+Status.TERMINAL = frozenset({Status.CLOSED, Status.CANCELED})  # type: ignore[attr-defined]
 
 # -- Terminal statuses (no further lifecycle transitions expected) --
-TERMINAL_STATUSES: frozenset[str] = Status.TERMINAL
+TERMINAL_STATUSES: frozenset[Status] = Status.TERMINAL  # type: ignore[attr-defined]
 
 
 def is_terminal(t: "Ticket") -> bool:
-    return t.status in Status.TERMINAL
+    return t.status in Status.TERMINAL  # type: ignore[attr-defined]
 
 
 # ── Exceptions ──────────────────────────────────────────────
@@ -47,16 +59,19 @@ def is_terminal(t: "Ticket") -> bool:
 
 class TicketsNotFoundError(Exception):
     """Raised when no .tickets/ directory can be located."""
+
     pass
 
 
 class TicketNotFoundError(Exception):
     """Raised when a specific ticket file does not exist."""
+
     pass
 
 
 class AmbiguousIDError(ValueError):
     """Raised when a partial ID matches multiple tickets."""
+
     pass
 
 
@@ -126,7 +141,7 @@ class FieldChanges:
 class Ticket:
     id: str
     title: str
-    status: str = "open"
+    status: Status = Status.OPEN
     type: str = "task"
     priority: int = 2
     assignee: str | None = None
@@ -275,6 +290,8 @@ def _parse_yaml_value(key: str, raw: str) -> T.Any:
         return None
     if key == "priority":
         return int(raw)
+    if key == "status":
+        return Status(raw)
     return raw
 
 
@@ -446,6 +463,7 @@ def has_parent_cycle(
 
 class FieldChangeError(ValueError):
     """Raised when `apply_field_changes` rejects the requested changes."""
+
     pass
 
 
