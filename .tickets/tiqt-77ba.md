@@ -1,6 +1,6 @@
 ---
 id: tiqt-77ba
-status: open
+status: closed
 type: chore
 priority: 4
 deps: [tiqt-43f8]
