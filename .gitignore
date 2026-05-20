@@ -10,3 +10,4 @@ wheels/
 .venv
 .claude/settings.local.json
 .claude/**/spexl-*
+.agents/memory/
