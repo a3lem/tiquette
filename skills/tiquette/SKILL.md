@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.2.0
+  version: 0.2.1
   note: Generated. Do not modify
 ---
 
