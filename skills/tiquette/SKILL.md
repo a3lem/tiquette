@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.2.1
+  version: 0.2.2
   note: Generated. Do not modify
 ---
 
@@ -55,8 +55,8 @@ Frequently Used
   show <id>                             Display ticket (meta + body)
   create <title> [field-options]        Create new ticket (prints ID)
   edit <id> [field-options]             Modify ticket fields
-  start <id>                            Set ticket status to in_progress
-  close <id>                            Set status to closed (ticket is complete)
+  start <id>...                         Set ticket status to in_progress
+  close <id>...                         Set status to closed (ticket is complete)
 
 Commands
 --------
@@ -86,12 +86,14 @@ Lifecycle:
                                         Setting and unsetting the same field in
                                         the same call is an error.
 
-  start <id>                            Set status to in_progress
-  close <id> [-f]                       Set status to closed (ticket is complete)
+  start <id>...                         Set status to in_progress
+  close <id>... [-f]                    Set status to closed (ticket is complete)
                                         -f/--force cascades through open descendants
-  cancel <id> [-f]                      Set status to canceled
+                                        Multiple IDs: validated up front, all-or-nothing
+  cancel <id>... [-f]                   Set status to canceled
                                         -f/--force cascades through open descendants
-  reopen <id>                           Set status to open
+                                        Multiple IDs: validated up front, all-or-nothing
+  reopen <id>...                        Set status to open
   archive                               Move closed and canceled tickets to archive
 
 View:
