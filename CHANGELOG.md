@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.2.2 – 2026-05-21
 
 - added: `tq start`/`close`/`cancel`/`reopen` accept multiple ticket IDs; IDs are validated up front, so an unknown ID or a descendant-blocked target aborts the whole batch before any write (atomic, fail-fast)
 
