@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- added: `tq start`/`close`/`cancel`/`reopen` accept multiple ticket IDs; IDs are validated up front, so an unknown ID or a descendant-blocked target aborts the whole batch before any write (atomic, fail-fast)
+
+## v0.2.1 – 2026-05-20
+
 - fixed: legacy `status: completed` no longer crashes `tq validate`/`tq ls`/`tq show` with a raw `ValueError` traceback; the error is now a clean diagnostic pointing at `tq autofix` (tiqt-280e)
 - fixed: `tq archive` now propagates the "not archivable" constraint through `links` as well as `deps` and `parent`; previously a link-only chain (open A → link → closed B → link → closed C) could archive C while keeping B (tiqt-6e82)
 - fixed: malformed ticket files now raise a clear `TicketParseError` (unknown frontmatter keys, missing `: ` separator, id mismatch, unknown types, missing fields) instead of crashing with a raw `TypeError`/`ValueError` (tiqt-de75, tiqt-4e3d, tiqt-8d9f)

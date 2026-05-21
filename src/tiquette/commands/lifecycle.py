@@ -33,12 +33,13 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     add_create_flags(p_create)
     p_create.set_defaults(func=_handle_create)
 
-    # [AI]
-    # Context: cascade-close-cancel -- ticket-lifecycle requirements=close-command,cancel-command
-    # Intent: close/cancel gain -f/--force to cascade through open descendants;
-    #   start/reopen stay flagless. Each subparser carries its target Status
-    #   in set_defaults so _handle_status dispatches on the Status enum, not
-    #   on the subcommand name.
+    # [AI] Context: lifecycle-multi-id -- ticket-lifecycle requirements=start/close/cancel/reopen
+    # Intent: each transition subparser takes one or more IDs (nargs="+"); the
+    #   shared _handle_status validates them all up front before mutating, so a
+    #   batch that names an unknown or descendant-blocked ticket leaves the store
+    #   untouched. close/cancel still gain -f/--force to cascade open descendants.
+    #   Each subparser carries its target Status in set_defaults so _handle_status
+    #   dispatches on the Status enum, not on the subcommand name.
     for name, helptext, target in [
         ("start", "Set status to in_progress", Status.IN_PROGRESS),
         ("close", "Set status to closed", Status.CLOSED),
@@ -46,7 +47,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         ("reopen", "Set status to open", Status.OPEN),
     ]:
         p = subparsers.add_parser(name, help=helptext)
-        p.add_argument("id", help="Ticket ID")
+        p.add_argument("id", nargs="+", help="Ticket ID(s)")
         if name in ("close", "cancel"):
             p.add_argument(
                 "-f",
@@ -136,48 +137,84 @@ def _check_last_open_child(
     sys.stdout.write(f"note: {ticket.parent} has no remaining open children\n")
 
 
+# [AI] Context: lifecycle-multi-id -- ticket-lifecycle requirements=start/close/cancel/reopen,invalid-operations,transition-output
+# Intent: apply one target status to every supplied ID atomically. Three phases:
+#   (1) resolve+load all IDs (dedup, first-seen order) -- any unknown ID aborts
+#       before a single write; (2) for terminal targets without --force, reject if
+#       ANY target has open descendants (per-target, independent check) -- abort
+#       before writing; (3) mutate + emit. This extends the existing single-ticket
+#       "leave it re-runnable on partial failure" guarantee to the whole batch.
 def _handle_status(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
+    target: Status = args.target_status
 
+    # Phase 1: resolve + load every ID before mutating anything.
+    # Dedup on resolved ID, preserving first-seen order, so a ticket named twice
+    # is processed once.
+    targets: list[Ticket] = []
+    seen: set[str] = set()
     try:
-        ticket_id = resolve_id_in_dir(args.id, tickets_dir)
-        ticket = read_ticket(ticket_id, tickets_dir)
+        for raw_id in args.id:
+            ticket_id = resolve_id_in_dir(raw_id, tickets_dir)
+            if ticket_id in seen:
+                continue
+            seen.add(ticket_id)
+            targets.append(read_ticket(ticket_id, tickets_dir))
     except TicketNotFoundError as exc:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
 
-    target: Status = args.target_status
-
-    if is_terminal(target):
-        # [AI]
-        # Context: cli-redesign-v1.2 -- ticket-lifecycle requirements=close-command,cancel-command
-        # Intent: shared descendant rejection + optional force-cascade. The terminal
-        #   status (`closed` or `canceled`) is set directly on each ticket;
-        #   no resolution field is written.
-        all_tickets = load_all_tickets(tickets_dir)
-        open_desc = _find_open_descendants(ticket.id, all_tickets)
-        if open_desc and not args.force:
-            desc_list = ", ".join(sorted(open_desc))
-            sys.stderr.write(f"error: {ticket.id} has open descendants: {desc_list}\n")
-            sys.exit(1)
-        # Cascade descendants first so a partial failure leaves the parent open
-        # (and therefore re-runnable) rather than closed-with-orphans.
-        for desc in open_desc.values():
-            desc.status = target
-            write_ticket(desc, tickets_dir)
-            sys.stdout.write(desc.id + "\n")
-        ticket.status = target
-        write_ticket(ticket, tickets_dir)
-        sys.stdout.write(ticket.id + "\n")
-        if target is Status.CLOSED:
-            all_tickets[ticket.id] = ticket
-            _check_last_open_child(ticket, all_tickets)
+    if not is_terminal(target):
+        for ticket in targets:
+            ticket.status = target
+            write_ticket(ticket, tickets_dir)
+            # [AI] Context: transition-output -- print after write so output only
+            #   appears for committed changes (failures sys.exit before this line).
+            sys.stdout.write(ticket.id + "\n")
         return
 
-    ticket.status = target
-    write_ticket(ticket, tickets_dir)
-    # [AI]
-    # Context: fix-cli-output-gaps -- ticket-lifecycle requirement=transition-output
-    # Intent: confirm which ticket was affected; placed after write so it only
-    #   fires on success (failures sys.exit before reaching this line)
-    sys.stdout.write(ticket.id + "\n")
+    # Terminal target (closed/canceled): no resolution field is written.
+    all_tickets = load_all_tickets(tickets_dir)
+
+    # Phase 2: per-target descendant pre-flight. Without --force, a target with
+    # open descendants is rejected; if any target is rejected the whole run aborts
+    # before writing.
+    open_desc_by_target: dict[str, dict[str, Ticket]] = {
+        t.id: _find_open_descendants(t.id, all_tickets) for t in targets
+    }
+    if not args.force:
+        blocked = [t for t in targets if open_desc_by_target[t.id]]
+        if blocked:
+            for t in blocked:
+                desc_list = ", ".join(sorted(open_desc_by_target[t.id]))
+                sys.stderr.write(f"error: {t.id} has open descendants: {desc_list}\n")
+            sys.exit(1)
+
+    # Phase 3: mutate + emit. Cascade each target's open descendants first so a
+    # partial failure leaves the parent open (re-runnable). The written set keeps
+    # a ticket that is both a descendant of one target and an explicit target from
+    # being written twice.
+    written: set[str] = set()
+    closed_targets: list[Ticket] = []
+    for ticket in targets:
+        for desc in open_desc_by_target[ticket.id].values():
+            if desc.id in written:
+                continue
+            desc.status = target
+            write_ticket(desc, tickets_dir)
+            written.add(desc.id)
+            all_tickets[desc.id] = desc
+            sys.stdout.write(desc.id + "\n")
+        if ticket.id in written:
+            continue
+        ticket.status = target
+        write_ticket(ticket, tickets_dir)
+        written.add(ticket.id)
+        all_tickets[ticket.id] = ticket
+        sys.stdout.write(ticket.id + "\n")
+        if target is Status.CLOSED:
+            closed_targets.append(ticket)
+
+    # Notify after all writes so each check sees the final sibling statuses.
+    for ticket in closed_targets:
+        _check_last_open_child(ticket, all_tickets)

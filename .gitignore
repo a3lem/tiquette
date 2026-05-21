@@ -11,3 +11,4 @@ wheels/
 .claude/settings.local.json
 .claude/**/spexl-*
 .agents/memory/
+.tickets/archive/
