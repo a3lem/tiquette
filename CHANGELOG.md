@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.2.3 – 2026-05-22
 
 - added: `tq prune` permanently deletes archived tickets by filter (`-s`/`--status`, `-t`/`--type`, `--before YYYY-MM-DD`); filters AND-combine, at least one is required, and deletion is a dry run unless `-y`/`--yes` is passed
 
