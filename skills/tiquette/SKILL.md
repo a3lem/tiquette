@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.2.2
+  version: 0.2.3
   note: Generated. Do not modify
 ---
 
@@ -121,6 +121,12 @@ View:
 Maintenance:
   validate                              Check all tickets for referential integrity
   autofix                               Update tickets to be consistent with current behavior
+  prune [filters] [-y]                  Permanently delete archived tickets by filter
+    -s, --status X                      Filter: closed|canceled
+    --type TYPE                         Filter by type
+    --before YYYY-MM-DD                 Match tickets created strictly before date
+    -y, --yes                           Actually delete (default: dry run)
+                                        At least one filter required
 
 Examples
 --------
