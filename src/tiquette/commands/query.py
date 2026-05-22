@@ -7,6 +7,7 @@ import shutil
 import sys
 import typing as T
 from collections import Counter
+from datetime import date, datetime
 from pathlib import Path
 
 from tiquette.commands._fields import VALID_TYPES
@@ -163,6 +164,28 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "archive", help="Move closed and canceled tickets to archive"
     )
     p_archive.set_defaults(func=_handle_archive)
+
+    # [AI]
+    # Context: prune-archived-tickets -- ticket-query requirement=prune-command
+    # Intent: permanently delete archived tickets by filter. Dry-run unless -y.
+    #   Filters AND-combine; at least one is required (guarded in the handler,
+    #   since argparse can't express "one-of-these-optionals-required").
+    p_prune = subparsers.add_parser(
+        "prune", help="Permanently delete archived tickets by filter"
+    )
+    p_prune.add_argument(
+        "-s", "--status", choices=["closed", "canceled"], help="Filter by status"
+    )
+    p_prune.add_argument("-t", "--type", choices=VALID_TYPES, help="Filter by type")
+    p_prune.add_argument(
+        "--before",
+        metavar="YYYY-MM-DD",
+        help="Match tickets created strictly before this date",
+    )
+    p_prune.add_argument(
+        "-y", "--yes", action="store_true", help="Actually delete (default: dry run)"
+    )
+    p_prune.set_defaults(func=_handle_prune)
 
 
 # ── Helpers ──────────────────────────────────────────────────
@@ -916,3 +939,73 @@ def _handle_archive(args: argparse.Namespace) -> None:
         return
 
     _move_to_archive(tickets_dir, all_tickets, archivable)
+
+
+# ── prune ────────────────────────────────────────────────────
+
+
+# [AI]
+# Context: prune-archived-tickets -- ticket-query requirement=prune-command
+# Intent: AND-combine the supplied filters. `before` compares the date portion
+#   of `created`, so a tz-aware and a naive timestamp never get compared as
+#   datetimes (which would raise). Strictly-before midnight == created.date()
+#   strictly less than the cutoff date.
+def _prune_matches(
+    t: Ticket,
+    status: str | None,
+    type_: str | None,
+    before: date | None,
+) -> bool:
+    if status is not None and str(t.status) != status:
+        return False
+    if type_ is not None and t.type != type_:
+        return False
+    if before is not None and not datetime.fromisoformat(t.created).date() < before:
+        return False
+    return True
+
+
+# [AI]
+# Context: prune-archived-tickets -- ticket-query requirement=prune-command
+# Intent: permanently delete archived tickets matching the filters. Operates
+#   only on .tickets/archive/ via source="archived". At least one filter is
+#   required. Dry run unless --yes.
+def _handle_prune(args: argparse.Namespace) -> None:
+    if args.status is None and args.type is None and args.before is None:
+        sys.stderr.write(
+            "prune requires at least one filter (--status, --type, or --before)\n"
+        )
+        sys.exit(2)
+
+    before: date | None = None
+    if args.before is not None:
+        try:
+            before = date.fromisoformat(args.before)
+        except ValueError:
+            sys.stderr.write(
+                f"invalid --before date {args.before!r}; expected YYYY-MM-DD\n"
+            )
+            sys.exit(2)
+
+    tickets_dir = find_tickets_dir()
+    archived = load_all_tickets(tickets_dir, source="archived")
+    matches = sorted(
+        t.id
+        for t in archived.values()
+        if _prune_matches(t, args.status, args.type, before)
+    )
+
+    if not matches:
+        print("No archived tickets matched")
+        return
+
+    archive_dir = tickets_dir / "archive"
+    if not args.yes:
+        for tid in matches:
+            print(tid)
+        print(f"Dry run: {len(matches)} ticket(s) would be deleted. Pass -y to delete.")
+        return
+
+    for tid in matches:
+        (archive_dir / f"{tid}.md").unlink()
+        print(f"Pruned {tid}")

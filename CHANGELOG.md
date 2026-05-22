@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- added: `tq prune` permanently deletes archived tickets by filter (`-s`/`--status`, `-t`/`--type`, `--before YYYY-MM-DD`); filters AND-combine, at least one is required, and deletion is a dry run unless `-y`/`--yes` is passed
+
 ## v0.2.2 – 2026-05-21
 
 - added: `tq start`/`close`/`cancel`/`reopen` accept multiple ticket IDs; IDs are validated up front, so an unknown ID or a descendant-blocked target aborts the whole batch before any write (atomic, fail-fast)

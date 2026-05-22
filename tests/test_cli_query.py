@@ -1378,3 +1378,160 @@ class TestLsDep:
         r = run_tq_env("ls", "--parent", "task-001", "--dep", "task-002",
                        env=_make_env(td))
         assert r.returncode != 0
+
+
+class TestPruneArgs:
+    """Argument parsing for `tq prune`."""
+
+    # spec: ticket-query requirement=prune-command scenario=prune-rejects-invalid-status
+    def test_prune_rejects_invalid_status(self) -> None:
+        r = run_tq("prune", "--status", "open")
+        assert r.returncode != 0
+
+    # spec: ticket-query requirement=prune-command scenario=prune-rejects-invalid-type
+    def test_prune_rejects_invalid_type(self) -> None:
+        r = run_tq("prune", "--type", "invalid")
+        assert r.returncode != 0
+
+    # spec: ticket-query requirement=prune-command scenario=prune-rejects-invalid-before-date
+    def test_prune_rejects_invalid_before(self) -> None:
+        r = run_tq("prune", "--before", "not-a-date")
+        assert r.returncode != 0
+
+
+class TestPruneBehavior:
+    """Behavioral tests for `tq prune`.
+
+    # spec: ticket-query requirement=prune-command
+    """
+
+    @staticmethod
+    def _seed(tmp_path: Path) -> Path:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="arc-001", title="Archived canceled bug",
+                   status="canceled", type="bug",
+                   created="2025-06-01T10:00:00"),
+            td / "archive",
+        )
+        write_ticket(
+            Ticket(id="arc-002", title="Archived closed task",
+                   status="closed", type="task",
+                   created="2026-03-01T10:00:00"),
+            td / "archive",
+        )
+        return td
+
+    # spec: ticket-query requirement=prune-command scenario=prune-deletes-matching-canceled-tickets-with-confirmation
+    def test_prune_deletes_matching_with_confirmation(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("prune", "--status", "canceled", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert not (td / "archive" / "arc-001.md").exists()
+        assert (td / "archive" / "arc-002.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=dry-run-by-default-deletes-nothing
+    def test_prune_dry_run_by_default(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("prune", "--status", "canceled", env=_make_env(td))
+        assert r.returncode == 0
+        assert "arc-001" in r.stdout
+        assert "Dry run: 1 ticket(s) would be deleted. Pass -y to delete." in r.stdout
+        assert (td / "archive" / "arc-001.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=bare-prune-is-rejected
+    def test_prune_bare_is_rejected(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("prune", env=_make_env(td))
+        assert r.returncode != 0
+        assert "filter" in r.stderr.lower()
+        assert (td / "archive" / "arc-001.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=filters-combine-with-and
+    def test_prune_filters_and(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="arc-001", title="canceled bug",
+                   status="canceled", type="bug"),
+            td / "archive",
+        )
+        write_ticket(
+            Ticket(id="arc-002", title="canceled task",
+                   status="canceled", type="task"),
+            td / "archive",
+        )
+        r = run_tq_env(
+            "prune", "--status", "canceled", "--type", "bug", "-y",
+            env=_make_env(td),
+        )
+        assert r.returncode == 0
+        assert not (td / "archive" / "arc-001.md").exists()
+        assert (td / "archive" / "arc-002.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=before-filters-on-created-date
+    def test_prune_before_on_created(self, tmp_path: Path) -> None:
+        td = self._seed(tmp_path)
+        r = run_tq_env("prune", "--before", "2026-01-01", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert not (td / "archive" / "arc-001.md").exists()
+        assert (td / "archive" / "arc-002.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=prune-ignores-active-tickets
+    def test_prune_ignores_active(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="act-001", title="Active canceled", status="canceled"), td)
+        r = run_tq_env("prune", "--status", "canceled", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert (td / "act-001.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=no-matches-reports-nothing-pruned
+    def test_prune_no_matches(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="arc-001", title="closed", status="closed"),
+            td / "archive",
+        )
+        r = run_tq_env("prune", "--status", "canceled", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert "No archived tickets matched" in r.stdout
+
+    # spec: ticket-query requirement=prune-command scenario=prune-accepts-short-flags
+    def test_prune_short_flags(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(
+            Ticket(id="arc-001", title="canceled bug",
+                   status="canceled", type="bug"),
+            td / "archive",
+        )
+        write_ticket(
+            Ticket(id="arc-002", title="closed task",
+                   status="closed", type="task"),
+            td / "archive",
+        )
+        r = run_tq_env("prune", "-s", "canceled", "-t", "bug", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert not (td / "archive" / "arc-001.md").exists()
+        assert (td / "archive" / "arc-002.md").exists()
+
+    # spec: ticket-query requirement=prune-command scenario=prune-allows-deleting-a-ticket-still-referenced-by-an-active-ticket
+    def test_prune_allows_referenced(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        (td / "archive").mkdir()
+        write_ticket(Ticket(id="act-001", title="Active", deps=["arc-001"]), td)
+        write_ticket(
+            Ticket(id="arc-001", title="closed", status="closed"),
+            td / "archive",
+        )
+        r = run_tq_env("prune", "--status", "closed", "-y", env=_make_env(td))
+        assert r.returncode == 0
+        assert not (td / "archive" / "arc-001.md").exists()
