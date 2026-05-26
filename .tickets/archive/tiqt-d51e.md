@@ -6,7 +6,7 @@ priority: 4
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:35.717838+00:00
+created: 2026-05-19T13:31Z
 ---
 # _handle_show reads ticket file twice; reuse read_ticket output
 

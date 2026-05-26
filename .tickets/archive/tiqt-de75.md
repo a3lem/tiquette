@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:19.856290+00:00
+created: 2026-05-19T13:31Z
 ---
 # Reject unknown/malformed frontmatter keys instead of silent drop
 

@@ -6,7 +6,7 @@ priority: 4
 deps: []
 links: []
 tags: []
-created: 2026-05-19T08:56:07.380520+00:00
+created: 2026-05-19T08:56Z
 ---
 # Tighten _handle_archive convergence loop
 

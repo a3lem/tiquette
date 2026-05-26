@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:24.647781+00:00
+created: 2026-05-19T13:31Z
 ---
 # Narrow has_dep_cycle signature to (graph, source, new_deps)
 

@@ -154,6 +154,9 @@ class TestStatusTransitionArgs:
 
     # spec: ticket-lifecycle requirement=reopen-command scenario=reopen-from-closed
     def test_reopen_accepts_id(self) -> None:
+        # Fixture ticket is open; close first so reopen has work to do.
+        # The idempotent-transition guard would otherwise reject open→open.
+        _ = run_tq("close", "test-0001")
         result = run_tq("reopen", "test-0001")
         assert result.returncode == 0
 
@@ -894,3 +897,237 @@ class TestCreateWithNote:
         assert content.count(created_ts) >= 2, (
             "expected both notes to carry the same timestamp"
         )
+
+
+# [AI] status-transition-notes: covers --note on start/close/cancel/reopen,
+# verb-tag prefixing, shared timestamp, cascade propagation, and atomicity.
+class TestStatusTransitionNotes:
+    """Tests for --note on start/close/cancel/reopen.
+    # spec: ticket-lifecycle requirement=transition-notes-via---note
+    """
+
+    _TS_RE = r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z"
+
+    def _setup(self, tmp_path: Path) -> Path:
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        return tickets_dir
+
+    def _content(self, tickets_dir: Path, ticket_id: str) -> str:
+        return (tickets_dir / f"{ticket_id}.md").read_text()
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=close-with-note
+    def test_close_with_note(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("close", "t-001", "--note", "duplicate of t-999",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        c = self._content(td, "t-001")
+        assert "status: closed" in c
+        assert re.search(rf"- {self._TS_RE} \[closed\]: duplicate of t-999", c)
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=cancel-with-note
+    def test_cancel_with_note(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("cancel", "t-001", "--note", "wontfix",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        c = self._content(td, "t-001")
+        assert "status: canceled" in c
+        assert re.search(rf"- {self._TS_RE} \[canceled\]: wontfix", c)
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=start-with-note
+    def test_start_with_note(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("start", "t-001", "--note", "kicking off the spike",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        c = self._content(td, "t-001")
+        assert "status: in_progress" in c
+        assert re.search(rf"- {self._TS_RE} \[started\]: kicking off the spike", c)
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=reopen-with-note
+    def test_reopen_with_note(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="closed"), td)
+        r = run_tq("reopen", "t-001", "--note", "regression seen in v0.3",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        c = self._content(td, "t-001")
+        assert "status: open" in c
+        assert re.search(rf"- {self._TS_RE} \[reopened\]: regression seen in v0.3", c)
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=transition-without---note-writes-nothing-to-notes
+    def test_close_without_note_writes_no_notes_section(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("close", "t-001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        c = self._content(td, "t-001")
+        assert "## Notes" not in c
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=multiple-notes-share-one-timestamp
+    def test_multiple_notes_share_one_timestamp(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("close", "t-001", "--note", "first reason", "--note", "second reason",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        c = self._content(td, "t-001")
+        matches = re.findall(rf"- ({self._TS_RE}) \[closed\]: (.+)", c)
+        assert len(matches) == 2
+        assert matches[0][0] == matches[1][0], "timestamps should be identical"
+        assert matches[0][1] == "first reason"
+        assert matches[1][1] == "second reason"
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=multi-id-transition-writes-notes-on-every-affected-ticket
+    def test_multi_id_transition_writes_notes_on_every_ticket(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        write_ticket(_make_ticket("t-002"), td)
+        r = run_tq("close", "t-001", "t-002", "--note", "Q2 cleanup",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        for tid in ("t-001", "t-002"):
+            c = self._content(td, tid)
+            assert "status: closed" in c
+            assert re.search(rf"- {self._TS_RE} \[closed\]: Q2 cleanup", c), tid
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=force-close-cascade-propagates-note-to-descendants
+    def test_force_cascade_propagates_note(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("par-0001"), td)
+        write_ticket(_make_ticket("par-0002", parent="par-0001"), td)
+        write_ticket(_make_ticket("par-0003", parent="par-0002", status="in_progress"), td)
+        r = run_tq("close", "-f", "par-0001", "--note", "rolling up Q2",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        for tid in ("par-0001", "par-0002", "par-0003"):
+            c = self._content(td, tid)
+            assert "status: closed" in c, tid
+            assert re.search(rf"- {self._TS_RE} \[closed\]: rolling up Q2", c), tid
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=force-close-cascade-without---note-writes-nothing
+    def test_force_cascade_without_note_writes_nothing(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("par-0001"), td)
+        write_ticket(_make_ticket("par-0002", parent="par-0001"), td)
+        r = run_tq("close", "-f", "par-0001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        for tid in ("par-0001", "par-0002"):
+            c = self._content(td, tid)
+            assert "status: closed" in c
+            assert "## Notes" not in c
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=force-cascade-does-not-write-notes-on-already-terminal-descendants
+    def test_force_cascade_skips_terminal_descendants(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("par-0001"), td)
+        write_ticket(_make_ticket("par-0002", parent="par-0001", status="canceled"), td)
+        r = run_tq("close", "-f", "par-0001", "--note", "rollup",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0
+        parent_c = self._content(td, "par-0001")
+        assert "status: closed" in parent_c
+        assert re.search(rf"- {self._TS_RE} \[closed\]: rollup", parent_c)
+        child_c = self._content(td, "par-0002")
+        assert "status: canceled" in child_c
+        assert "## Notes" not in child_c
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=failed-transition-writes-no-notes
+    def test_failed_transition_writes_no_notes(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001"), td)
+        r = run_tq("close", "t-001", "nonexistent", "--note", "should not land",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        c = self._content(td, "t-001")
+        assert "status: open" in c
+        assert "## Notes" not in c
+
+    # spec: ticket-lifecycle requirement=transition-notes-via---note scenario=rejected-force-less-cascade-writes-no-notes
+    def test_rejected_force_less_cascade_writes_no_notes(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("par-0001"), td)
+        write_ticket(_make_ticket("par-0002", parent="par-0001"), td)
+        r = run_tq("close", "par-0001", "--note", "should not land",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        c = self._content(td, "par-0001")
+        assert "status: open" in c
+        assert "## Notes" not in c
+
+
+# [AI] Idempotent-transition guard: any transition whose target status equals
+# the current status is rejected. Pre-flight runs before any write so a
+# single already-at-status ticket aborts the whole batch atomically.
+class TestIdempotentTransitionRejection:
+    """Rejects transitions where the target status equals the current status."""
+
+    def _setup(self, tmp_path: Path) -> Path:
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        return tickets_dir
+
+    def test_reopen_on_open_ticket_is_rejected(self, tmp_path: Path) -> None:
+        from tiquette.store import read_ticket, write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="open"), td)
+        r = run_tq("reopen", "t-001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "already open" in r.stderr
+        assert read_ticket("t-001", td).status == "open"
+
+    def test_start_on_in_progress_ticket_is_rejected(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="in_progress"), td)
+        r = run_tq("start", "t-001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "already in_progress" in r.stderr
+
+    def test_close_on_closed_ticket_is_rejected(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="closed"), td)
+        r = run_tq("close", "t-001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "already closed" in r.stderr
+
+    def test_cancel_on_canceled_ticket_is_rejected(self, tmp_path: Path) -> None:
+        from tiquette.store import write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="canceled"), td)
+        r = run_tq("cancel", "t-001", env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "already canceled" in r.stderr
+
+    def test_batch_aborts_atomically_when_one_already_at_target(self, tmp_path: Path) -> None:
+        """One already-at-target ticket aborts the whole batch; no writes occur."""
+        from tiquette.store import read_ticket, write_ticket
+        td = self._setup(tmp_path)
+        write_ticket(_make_ticket("t-001", status="open"), td)
+        write_ticket(_make_ticket("t-002", status="closed"), td)
+        r = run_tq("close", "t-001", "t-002", "--note", "should not land",
+                   env={"TICKETS_DIR": str(td)})
+        assert r.returncode != 0
+        assert "t-002" in r.stderr and "already closed" in r.stderr
+        # t-001 must remain untouched (no status flip, no note)
+        assert read_ticket("t-001", td).status == "open"
+        c = (td / "t-001.md").read_text()
+        assert "## Notes" not in c

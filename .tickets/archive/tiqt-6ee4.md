@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:25:09.223494+00:00
+created: 2026-05-19T11:25Z
 ---
 # Lift _handle_deps tree-printing closures to module level
 

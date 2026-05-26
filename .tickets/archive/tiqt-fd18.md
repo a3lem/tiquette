@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:14.633467+00:00
+created: 2026-05-19T13:31Z
 ---
 # Express load_all_tickets via iter_tickets to dedupe glob/sort/merge
 

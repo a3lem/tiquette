@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:24:59.675062+00:00
+created: 2026-05-19T11:24Z
 ---
 # Promote _abbreviate to public API or move it to autofix
 

@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:24:50.739949+00:00
+created: 2026-05-19T11:24Z
 ---
 # Stop calling sys.exit from inside _apply_scope pipeline stage
 

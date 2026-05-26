@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:33.535349+00:00
+created: 2026-05-19T13:31Z
 ---
 # Precompute parent->children index in _TreePrinter (O(N^2) -> O(N))
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
+from tiquette.timestamps import now_iso
 from pathlib import Path
 
 from tiquette.commands._fields import add_create_flags, namespace_to_field_changes
@@ -12,6 +12,7 @@ from tiquette.store import (
     Ticket,
     TicketNotFoundError,
     TicketsNotFoundError,
+    _append_note,
     apply_field_changes,
     find_tickets_dir,
     generate_id,
@@ -21,6 +22,17 @@ from tiquette.store import (
     resolve_id_in_dir,
     write_ticket,
 )
+
+
+# [AI] Status-transition-notes: maps target status to the verb tag that
+# prefixes any --note written by a transition. Keyed on target Status because
+# that's what _handle_status already has via args.target_status.
+_TRANSITION_TAG: dict[Status, str] = {
+    Status.IN_PROGRESS: "started",
+    Status.CLOSED: "closed",
+    Status.CANCELED: "canceled",
+    Status.OPEN: "reopened",
+}
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -41,10 +53,10 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     #   Each subparser carries its target Status in set_defaults so _handle_status
     #   dispatches on the Status enum, not on the subcommand name.
     for name, helptext, target in [
-        ("start", "Set status to in_progress", Status.IN_PROGRESS),
-        ("close", "Set status to closed", Status.CLOSED),
-        ("cancel", "Set status to canceled", Status.CANCELED),
-        ("reopen", "Set status to open", Status.OPEN),
+        ("start", "Set status to in_progress (rejects if already in_progress)", Status.IN_PROGRESS),
+        ("close", "Set status to closed (rejects if already closed)", Status.CLOSED),
+        ("cancel", "Set status to canceled (rejects if already canceled)", Status.CANCELED),
+        ("reopen", "Set status to open (rejects if already open)", Status.OPEN),
     ]:
         p = subparsers.add_parser(name, help=helptext)
         p.add_argument("id", nargs="+", help="Ticket ID(s)")
@@ -55,6 +67,16 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
                 action="store_true",
                 help="Force closure; cascade to open descendants",
             )
+        # [AI] status-transition-notes: repeatable --note attaches a tagged
+        # entry (verb-prefixed) to every ticket whose status this invocation
+        # actually changes. No short flag; consistent with create/edit.
+        p.add_argument(
+            "--note",
+            action="append",
+            default=[],
+            metavar="TEXT",
+            help="Append a tagged note to every ticket changed by this command",
+        )
         p.set_defaults(func=_handle_status, target_status=target)
 
 
@@ -70,7 +92,7 @@ def _handle_create(args: argparse.Namespace) -> None:
         tickets_dir = Path.cwd() / ".tickets"
     tickets_dir.mkdir(parents=True, exist_ok=True)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = now_iso()
     ticket_id = generate_id(tickets_dir)
     ticket = Ticket(id=ticket_id, title=args.title, created=now)
 
@@ -148,6 +170,19 @@ def _handle_status(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     target: Status = args.target_status
 
+    # [AI] status-transition-notes: one timestamp per invocation, shared across
+    # every note appended to every affected ticket. Computed once up front but
+    # only used if --note was supplied; otherwise notes is empty and we write
+    # nothing to Notes.
+    notes: list[str] = list(getattr(args, "note", None) or [])
+    note_tag = _TRANSITION_TAG[target]
+    note_ts = now_iso() if notes else None
+
+    def _attach_notes(ticket: Ticket) -> None:
+        for note in notes:
+            assert note_ts is not None
+            _append_note(ticket, note, note_ts, tag=note_tag)
+
     # Phase 1: resolve + load every ID before mutating anything.
     # Dedup on resolved ID, preserving first-seen order, so a ticket named twice
     # is processed once.
@@ -164,9 +199,20 @@ def _handle_status(args: argparse.Namespace) -> None:
         sys.stderr.write(f"error: {exc}\n")
         sys.exit(1)
 
+    # [AI] Reject idempotent transitions (any target already at the requested
+    # status). Pre-flight all targets so a single already-at-status ticket
+    # aborts the whole batch before any write, matching the atomic semantics
+    # of the unknown-ID and open-descendants checks.
+    already: list[Ticket] = [t for t in targets if t.status == target]
+    if already:
+        for t in already:
+            sys.stderr.write(f"error: {t.id} is already {target.value}\n")
+        sys.exit(1)
+
     if not is_terminal(target):
         for ticket in targets:
             ticket.status = target
+            _attach_notes(ticket)
             write_ticket(ticket, tickets_dir)
             # [AI] Context: transition-output -- print after write so output only
             #   appears for committed changes (failures sys.exit before this line).
@@ -201,6 +247,7 @@ def _handle_status(args: argparse.Namespace) -> None:
             if desc.id in written:
                 continue
             desc.status = target
+            _attach_notes(desc)
             write_ticket(desc, tickets_dir)
             written.add(desc.id)
             all_tickets[desc.id] = desc
@@ -208,6 +255,7 @@ def _handle_status(args: argparse.Namespace) -> None:
         if ticket.id in written:
             continue
         ticket.status = target
+        _attach_notes(ticket)
         write_ticket(ticket, tickets_dir)
         written.add(ticket.id)
         all_tickets[ticket.id] = ticket

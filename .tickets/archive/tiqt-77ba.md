@@ -6,7 +6,7 @@ priority: 4
 deps: [tiqt-43f8]
 links: []
 tags: []
-created: 2026-05-19T08:55:55.829723+00:00
+created: 2026-05-19T08:55Z
 ---
 # Make is_terminal accept a status, not a Ticket
 

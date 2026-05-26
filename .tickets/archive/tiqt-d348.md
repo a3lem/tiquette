@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T08:54:48.267952+00:00
+created: 2026-05-19T08:54Z
 ---
 # Replace T._GenericAlias subparser annotation with correct argparse type
 

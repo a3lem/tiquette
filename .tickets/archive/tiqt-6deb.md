@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T08:55:59.900761+00:00
+created: 2026-05-19T08:55Z
 ---
 # Filter self-links on read, not just on write
 

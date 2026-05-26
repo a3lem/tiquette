@@ -195,7 +195,7 @@ class TestNotes:
         assert "first" in content
         assert "second" in content
         # Both notes appear; extract timestamps to verify they share one
-        timestamps = re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", content)
+        timestamps = re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z", content)
         assert len(timestamps) >= 2
         assert len(set(timestamps)) == 1, f"Expected one shared timestamp, got {set(timestamps)}"
 

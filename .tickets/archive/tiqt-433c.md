@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: [spexl]
-created: 2026-04-29T12:48:50.906383+00:00
+created: 2026-04-29T12:48Z
 ---
 # Apply spexl change: create-rename-assignee-short-flag
 
@@ -16,4 +16,4 @@ Implement spec change at specs/changes/create-rename-assignee-short-flag/. Renam
 
 ## Notes
 
-- 2026-04-30T13:25:15.279183+00:00: Implemented. lifecycle.py:39 -a → -A. Tests updated (test_cli_lifecycle.py 3 sites, test_cli_help.py 1 site). 316/316 pass. CHANGELOG updated.
+- 2026-04-30T13:25Z: Implemented. lifecycle.py:39 -a → -A. Tests updated (test_cli_lifecycle.py 3 sites, test_cli_help.py 1 site). 316/316 pass. CHANGELOG updated.

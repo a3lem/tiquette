@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime, timezone
-
 from tiquette.commands._fields import add_edit_flags, namespace_to_field_changes
+from tiquette.timestamps import now_iso
 from tiquette.store import (
     FieldChangeError,
     TicketNotFoundError,
@@ -46,7 +45,7 @@ def _handle_edit(args: argparse.Namespace) -> None:
         )
         sys.exit(2)
 
-    note_ts = datetime.now(timezone.utc).isoformat() if changes.notes else None
+    note_ts = now_iso() if changes.notes else None
 
     try:
         extra = apply_field_changes(

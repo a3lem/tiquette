@@ -7,7 +7,9 @@ import shutil
 import sys
 import typing as T
 from collections import Counter
-from datetime import date, datetime
+from datetime import date
+
+from tiquette.timestamps import parse_iso
 from pathlib import Path
 
 from tiquette.commands._fields import VALID_TYPES
@@ -960,7 +962,7 @@ def _prune_matches(
         return False
     if type_ is not None and t.type != type_:
         return False
-    if before is not None and not datetime.fromisoformat(t.created).date() < before:
+    if before is not None and not parse_iso(t.created).date() < before:
         return False
     return True
 

@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T08:55:53.287429+00:00
+created: 2026-05-19T08:55Z
 ---
 # Make has_dep_cycle pure: accept candidate edges, don't mutate graph
 

@@ -6,7 +6,7 @@ priority: 4
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:25:06.535886+00:00
+created: 2026-05-19T11:25Z
 ---
 # Drop type:ignore on link-pair tuple in _handle_links
 

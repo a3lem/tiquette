@@ -52,14 +52,16 @@ Lifecycle:
                                         Setting and unsetting the same field in
                                         the same call is an error.
 
-  start <id>...                         Set status to in_progress
-  close <id>... [-f]                    Set status to closed (ticket is complete)
+  start <id>... [--note]                Set status to in_progress
+  close <id>... [-f] [--note]           Set status to closed (ticket is complete)
                                         -f/--force cascades through open descendants
                                         Multiple IDs: validated up front, all-or-nothing
-  cancel <id>... [-f]                   Set status to canceled
+  cancel <id>... [-f] [--note]          Set status to canceled
                                         -f/--force cascades through open descendants
                                         Multiple IDs: validated up front, all-or-nothing
-  reopen <id>...                        Set status to open
+  reopen <id>... [--note]               Set status to open
+                                        Optional --note on all status changes to motivate
+                                        status change (repeatable)
   archive                               Move closed and canceled tickets to archive
 
 View:

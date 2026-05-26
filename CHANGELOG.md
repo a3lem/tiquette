@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+- added: `tq start`/`close`/`cancel`/`reopen` accept `--note TEXT` (repeatable). Each note is appended to the `## Notes` section of every ticket whose status the invocation actually changed, auto-prefixed with a verb tag (`[started]`, `[closed]`, `[canceled]`, `[reopened]`). All notes in one invocation share a timestamp. Cascades via `-f/--force` propagate the same note(s) to every affected descendant. Failed transitions write no notes.
+- changed: `tq start`/`close`/`cancel`/`reopen` reject idempotent transitions; an explicitly-named target whose current status already equals the requested target status is rejected with `error: <id> is already <status>`. In a batch, a single already-at-status ticket aborts the whole invocation before any write. `--force` does not bypass this check for the named target (still rejected even if descendants are open).
+- changed: ticket timestamps (frontmatter `created` and Notes entries) are now written in minute-precision Zulu form `YYYY-MM-DDTHH:MMZ`. Legacy microsecond+offset timestamps remain readable; run `tq autofix` to normalize them on disk (active and archived).
+- improved: `tq --help` now shows `[--note]` in each transition command signature with a one-line description; the short `tq` help stays minimal.
+- fixed: `tq autofix` prefix-rename no longer drops `## Notes` or other body content for tickets without an explicit `## Description` heading (tiqt-0896).
+
 ## v0.2.3 – 2026-05-22
 
 - added: `tq prune` permanently deletes archived tickets by filter (`-s`/`--status`, `-t`/`--type`, `--before YYYY-MM-DD`); filters AND-combine, at least one is required, and deletion is a dry run unless `-y`/`--yes` is passed

@@ -80,13 +80,13 @@ invocation SHALL share a single timestamp.
 - Given ticket "edit-004" exists
 - When the user runs `tq edit edit-004 --note "kickoff"`
 - Then ticket "edit-004" contains a `## Notes` section
-- And the notes section contains "kickoff" with an ISO 8601 timestamp
+- And the notes section contains "kickoff" with a timestamp in the format defined by `ticket-store`
 
 #### Scenario: Multiple notes share a timestamp
 - Given ticket "edit-004" exists
 - When the user runs `tq edit edit-004 --note "first" --note "second"`
 - Then both notes appear in `## Notes` in order
-- And both notes carry the same ISO 8601 timestamp
+- And both notes carry the same timestamp in the format defined by `ticket-store`
 
 ### Requirement: Tag add/remove
 

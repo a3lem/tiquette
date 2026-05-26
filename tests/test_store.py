@@ -715,7 +715,7 @@ class TestReadTicketTitleAndDescription:
         assert ticket.title == "Actual Title"
 
     def test_description_section_marker_line_exact(self, tmp_path: Path) -> None:
-        """'## Description' embedded inside a paragraph is not treated as a section."""
+        """'## Description' embedded inside a paragraph is not treated as a section header."""
         from tiquette.store import read_ticket
 
         tickets_dir = tmp_path / ".tickets"
@@ -726,7 +726,9 @@ class TestReadTicketTitleAndDescription:
             "---\n# Title\n\nSee ## Description for details.\n"
         )
         ticket = read_ticket("t-0004", tickets_dir)
-        assert ticket.description is None
+        # No exact `## Description` heading line, so the post-title body is
+        # captured verbatim as the description (tiqt-0896 round-trip fix).
+        assert ticket.description == "See ## Description for details."
 
     def test_description_extracted_after_exact_marker(self, tmp_path: Path) -> None:
         from tiquette.store import read_ticket

@@ -221,3 +221,129 @@ class TestAutofix:
         assert (archive / "tiqt-a1c1.md").exists()
         active = read_ticket("tiqt-bbbb", td)
         assert active.links == ["tiqt-a1c1"]
+
+
+# spec: ticket-autofix requirement=normalize-legacy-timestamps
+class TestAutofixTimestampNormalization:
+    LEGACY = "2026-04-29T12:48:50.906383+00:00"
+    NEW = "2026-04-29T12:48Z"
+
+    def _write_raw_ticket(
+        self,
+        tickets_dir: Path,
+        ticket_id: str,
+        created: str,
+        body_extra: str = "",
+    ) -> Path:
+        path = tickets_dir / f"{ticket_id}.md"
+        # Match the file format used by write_ticket: trailing newlines and `id` first.
+        path.write_text(
+            f"---\nid: {ticket_id}\nstatus: open\ntype: task\npriority: 2\n"
+            f"deps: []\nlinks: []\ntags: []\ncreated: {created}\n"
+            f"---\n# Title\n{body_extra}"
+        )
+        return path
+
+    def test_active_legacy_created_normalized(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        self._write_raw_ticket(td, "tiqt-aaaa", self.LEGACY)
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "- Normalized 1 ticket to current timestamp format" in r.stdout
+        content = (td / "tiqt-aaaa.md").read_text()
+        assert f"created: {self.NEW}" in content
+
+    def test_archived_legacy_created_normalized(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        archive = td / "archive"
+        archive.mkdir()
+        self._write_raw_ticket(archive, "tiqt-arc1", self.LEGACY)
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        content = (archive / "tiqt-arc1.md").read_text()
+        assert f"created: {self.NEW}" in content
+
+    def test_note_timestamp_normalized(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        self._write_raw_ticket(
+            td,
+            "tiqt-bbbb",
+            self.NEW,  # frontmatter already new; only the note is legacy
+            body_extra=f"\n## Notes\n\n- {self.LEGACY}: hello\n",
+        )
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        content = (td / "tiqt-bbbb.md").read_text()
+        assert f"- {self.NEW}: hello" in content
+        assert self.LEGACY not in content
+
+    def test_already_new_format_is_no_op(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        path = self._write_raw_ticket(td, "tiqt-cccc", self.NEW)
+        before = path.read_text()
+        before_mtime = path.stat().st_mtime
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "Normalized" not in r.stdout or "timestamp" not in r.stdout
+        assert path.read_text() == before
+        assert path.stat().st_mtime == before_mtime
+
+    def test_multiple_tickets_normalized(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        self._write_raw_ticket(td, "tiqt-aaaa", self.LEGACY)
+        self._write_raw_ticket(td, "tiqt-bbbb", self.LEGACY)
+        self._write_raw_ticket(
+            td,
+            "tiqt-cccc",
+            self.NEW,
+            body_extra=f"\n## Notes\n\n- {self.LEGACY}: hi\n",
+        )
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert "- Normalized 3 tickets to current timestamp format" in r.stdout
+
+    def test_idempotent(self, tmp_path: Path) -> None:
+        td = _make_project(tmp_path, "tiquette")
+        self._write_raw_ticket(td, "tiqt-aaaa", self.LEGACY)
+        r1 = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert "Normalized 1" in r1.stdout
+        r2 = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r2.returncode == 0, r2.stderr
+        assert "Normalized" not in r2.stdout or "timestamp" not in r2.stdout
+
+
+# spec: ticket-autofix requirement=stale-id-prefix-renames -- regression for tiqt-0896
+class TestAutofixRenamePreservesBody:
+    def test_rename_preserves_notes_section(self, tmp_path: Path) -> None:
+        """Prefix-rename must preserve a `## Notes` section even when no `## Description` heading is present."""
+        td = _make_project(tmp_path, "tiquette")
+        # Stale-prefix ticket with only a Notes section (no Description heading).
+        (td / "tiquette-aaaa.md").write_text(
+            "---\nid: tiquette-aaaa\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-04-29T12:48Z\n"
+            "---\n# Legacy ticket\n\n## Notes\n\n- 2026-04-29T12:48Z: kickoff\n"
+        )
+
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        assert (td / "tiqt-aaaa.md").exists()
+        renamed = (td / "tiqt-aaaa.md").read_text()
+        assert "## Notes" in renamed
+        assert "- 2026-04-29T12:48Z: kickoff" in renamed
+
+    def test_rename_preserves_description_and_notes(self, tmp_path: Path) -> None:
+        """Round-trip through rename keeps both `## Description` and `## Notes`."""
+        td = _make_project(tmp_path, "tiquette")
+        (td / "tiquette-bbbb.md").write_text(
+            "---\nid: tiquette-bbbb\nstatus: open\ntype: task\npriority: 2\n"
+            "deps: []\nlinks: []\ntags: []\ncreated: 2026-04-29T12:48Z\n"
+            "---\n# With both\n\n## Description\n\nProse content here.\n\n"
+            "## Notes\n\n- 2026-04-29T12:48Z: kickoff\n"
+        )
+
+        r = _run("autofix", env={"TICKETS_DIR": str(td)})
+        assert r.returncode == 0, r.stderr
+        renamed = (td / "tiqt-bbbb.md").read_text()
+        assert "Prose content here." in renamed
+        assert "## Notes" in renamed
+        assert "- 2026-04-29T12:48Z: kickoff" in renamed

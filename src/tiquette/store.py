@@ -10,6 +10,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tiquette.timestamps import now_iso
+
 TICKETS_DIR_NAME = ".tickets"
 
 # -- Frontmatter field order (controls serialization order) --
@@ -159,9 +161,7 @@ class Ticket:
     parent: str | None = None
     tags: list[str] = dataclasses.field(default_factory=list)
     xref: str | None = None
-    created: str = dataclasses.field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    created: str = dataclasses.field(default_factory=lambda: now_iso())
     description: str | None = None
 
 
@@ -443,19 +443,34 @@ def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, st
     title = "Untitled"
     description: str | None = None
     body_lines = body.splitlines()
-    for line in body_lines:
+    title_idx = -1
+    for i, line in enumerate(body_lines):
         if line.strip():
             title = line[2:].strip() if line.startswith("# ") else line.strip()
+            title_idx = i
             break
 
     # Description: everything after the first line whose stripped form is exactly
     # "## Description". Substring matches inside paragraphs are intentionally ignored.
+    desc_marker_idx = -1
     for i, line in enumerate(body_lines):
         if line.strip() == "## Description":
+            desc_marker_idx = i
             desc_text = "\n".join(body_lines[i + 1:]).strip()
             if desc_text:
                 description = desc_text
             break
+
+    # [AI] tiqt-0896: fall back to capturing the full post-title body when no
+    # `## Description` marker is present. Without this fallback, hand-edited
+    # tickets carrying only a `## Notes` section (no Description header) lose
+    # their Notes on round-trip through write_ticket -- the very bug that bit
+    # `tq autofix`'s prefix-rename. On the next write the body normalises into
+    # the standard `## Description\n\n<content>` layout.
+    if description is None and desc_marker_idx == -1 and title_idx != -1:
+        tail = "\n".join(body_lines[title_idx + 1:]).strip()
+        if tail:
+            description = tail
 
     # Filter self-references from links and deps.
     if ticket_id in raw_links:
@@ -626,9 +641,18 @@ class FieldChangeError(ValueError):
     pass
 
 
-def _append_note(ticket: Ticket, text: str, timestamp: str) -> None:
-    """Append a timestamped note to the ticket's body."""
-    note_line = f"- {timestamp}: {text}"
+def _append_note(
+    ticket: Ticket, text: str, timestamp: str, tag: str | None = None
+) -> None:
+    """Append a timestamped note to the ticket's body.
+
+    When `tag` is supplied, the entry is prefixed with `[<tag>]:` after the
+    timestamp; otherwise the entry is the existing `- <timestamp>: <text>` form.
+    """
+    if tag is not None:
+        note_line = f"- {timestamp} [{tag}]: {text}"
+    else:
+        note_line = f"- {timestamp}: {text}"
     if ticket.description is None:
         ticket.description = ""
     body = ticket.description
@@ -813,7 +837,7 @@ def _apply_validated(
 
     # Notes
     if changes.notes:
-        ts = note_timestamp or datetime.now(timezone.utc).isoformat()
+        ts = note_timestamp or now_iso()
         for note in changes.notes:
             _append_note(ticket, note, ts)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
 import secrets
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from tiquette.store import (
     iter_tickets,
     write_ticket,
 )
+from tiquette.timestamps import parse_iso, to_iso
 
 
 # [AI]
@@ -158,6 +160,85 @@ def _migrate_completed_to_closed(dirs: list[Path]) -> int:
     return migrated
 
 
+# [AI] Matches a Notes-section line: `- <timestamp>[ <tag>]: <text>`. The
+# timestamp is the first non-space token; an optional bracketed tag like
+# `[closed]` may follow before the `: ` separator. We then attempt to parse
+# the captured timestamp via parse_iso and skip the line if it isn't a
+# real timestamp.
+_NOTE_LINE_RE = re.compile(r"^(- )(\S+)((?:\s+\[[^\]]+\])?:\s.*)$")
+
+_NEW_FMT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$")
+
+
+def _normalize_ts_string(s: str) -> str | None:
+    # [AI] Returns the normalised form, or None if `s` is already in the new
+    # format. Raises ValueError if `s` is not a parseable timestamp -- callers
+    # use that as a signal to leave the line alone.
+    if _NEW_FMT_RE.match(s):
+        return None
+    return to_iso(parse_iso(s))
+
+
+def _normalize_timestamps(dirs: list[Path]) -> int:
+    """Return the count of ticket files whose content was rewritten."""
+    normalized = 0
+    for d in dirs:
+        for path in sorted(d.glob("*.md")):
+            content = path.read_text()
+            parts = content.split("---\n")
+            if len(parts) < 3:
+                continue
+
+            changed = False
+
+            # Frontmatter: only the `created:` line carries a timestamp.
+            fm_lines = parts[1].splitlines(keepends=True)
+            new_fm: list[str] = []
+            for line in fm_lines:
+                if line.startswith("created:"):
+                    value = line.split(":", 1)[1].strip()
+                    try:
+                        new_value = _normalize_ts_string(value)
+                    except ValueError:
+                        new_fm.append(line)
+                        continue
+                    if new_value is None:
+                        new_fm.append(line)
+                    else:
+                        new_fm.append(f"created: {new_value}\n")
+                        changed = True
+                else:
+                    new_fm.append(line)
+            parts[1] = "".join(new_fm)
+
+            # Body: Notes-section lines of the form `- <ts>...`.
+            body = "---\n".join(parts[2:])
+            new_body_lines: list[str] = []
+            for line in body.splitlines(keepends=True):
+                m = _NOTE_LINE_RE.match(line.rstrip("\n"))
+                if m is None:
+                    new_body_lines.append(line)
+                    continue
+                dash, ts, rest = m.group(1), m.group(2), m.group(3)
+                try:
+                    new_ts = _normalize_ts_string(ts)
+                except ValueError:
+                    new_body_lines.append(line)
+                    continue
+                if new_ts is None:
+                    new_body_lines.append(line)
+                    continue
+                trailing_nl = "\n" if line.endswith("\n") else ""
+                new_body_lines.append(f"{dash}{new_ts}{rest}{trailing_nl}")
+                changed = True
+            new_body = "".join(new_body_lines)
+
+            if changed:
+                path.write_text(parts[0] + "---\n" + parts[1] + "---\n" + new_body)
+                normalized += 1
+    return normalized
+
+
 def _handle_autofix(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     dirs = _all_ticket_dirs(tickets_dir)
@@ -176,6 +257,11 @@ def _handle_autofix(args: argparse.Namespace) -> None:
     if migrated:
         noun = "ticket" if migrated == 1 else "tickets"
         fixes.append(f"Migrated {migrated} {noun} from completed status")
+
+    normalized = _normalize_timestamps(dirs)
+    if normalized:
+        noun = "ticket" if normalized == 1 else "tickets"
+        fixes.append(f"Normalized {normalized} {noun} to current timestamp format")
 
     if not fixes:
         print("No fixes needed")

@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: [spexl]
-created: 2026-04-29T12:48:48.155913+00:00
+created: 2026-04-29T12:48Z
 ---
 # Apply spexl change: ls-archived-flags
 
@@ -16,4 +16,4 @@ Implement spec change at specs/changes/ls-archived-flags/. Adds --archived and -
 
 ## Notes
 
-- 2026-04-30T11:45:38.141231+00:00: Implemented. All 314 tests pass. Smoke-tested ls / ls -a / ls --archived / ls --archived --completed in /tmp/tq-smoke. CHANGELOG updated under [Unreleased]. Ready to archive spec change.
+- 2026-04-30T11:45Z: Implemented. All 314 tests pass. Smoke-tested ls / ls -a / ls --archived / ls --archived --completed in /tmp/tq-smoke. CHANGELOG updated under [Unreleased]. Ready to archive spec change.

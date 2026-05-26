@@ -6,7 +6,7 @@ priority: 1
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:24:45.562315+00:00
+created: 2026-05-19T11:24Z
 ---
 # Fix link-referrer asymmetry in _handle_archive propagation
 

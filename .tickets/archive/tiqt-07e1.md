@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T08:55:09.740369+00:00
+created: 2026-05-19T08:55Z
 ---
 # Extract _ticket_to_dict helper for JSON serialization
 

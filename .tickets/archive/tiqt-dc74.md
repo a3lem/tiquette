@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:24:37.019013+00:00
+created: 2026-05-19T11:24Z
 ---
 # Replace Status.TERMINAL monkey-patch with module-level frozenset
 

@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T13:31:22.599224+00:00
+created: 2026-05-19T13:31Z
 ---
 # Make read_ticket title/section detection structural, not first-match
 

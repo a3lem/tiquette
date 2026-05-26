@@ -6,7 +6,7 @@ priority: 1
 deps: [tiqt-8288]
 links: []
 tags: []
-created: 2026-05-19T08:55:25.258443+00:00
+created: 2026-05-19T08:55Z
 ---
 # Decompose _handle_ls into scope/filter/output stages
 

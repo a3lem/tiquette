@@ -6,7 +6,7 @@ priority: 2
 deps: []
 links: []
 tags: []
-created: 2026-05-19T12:28:24.758859+00:00
+created: 2026-05-19T12:28Z
 ---
 # validate crashes with raw ValueError on legacy 'completed' status
 

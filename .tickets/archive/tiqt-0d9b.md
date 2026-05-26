@@ -6,7 +6,7 @@ priority: 3
 deps: []
 links: []
 tags: []
-created: 2026-05-19T11:24:57.545597+00:00
+created: 2026-05-19T11:24Z
 ---
 # Fix lying return type of _ticket_to_dict
 
