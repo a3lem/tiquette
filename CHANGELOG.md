@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.2.4 – 2026-05-26
 
 - added: `tq start`/`close`/`cancel`/`reopen` accept `--note TEXT` (repeatable). Each note is appended to the `## Notes` section of every ticket whose status the invocation actually changed, auto-prefixed with a verb tag (`[started]`, `[closed]`, `[canceled]`, `[reopened]`). All notes in one invocation share a timestamp. Cascades via `-f/--force` propagate the same note(s) to every affected descendant. Failed transitions write no notes.
 - changed: `tq start`/`close`/`cancel`/`reopen` reject idempotent transitions; an explicitly-named target whose current status already equals the requested target status is rejected with `error: <id> is already <status>`. In a batch, a single already-at-status ticket aborts the whole invocation before any write. `--force` does not bypass this check for the named target (still rejected even if descendants are open).
