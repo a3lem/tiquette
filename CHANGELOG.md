@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.2.5 – 2026-07-06
 
 - fixed: `tq show`/`info`/`path`/`deps` no longer fail with `ticket '<id>' not found` on archived tickets; ID resolution and file lookup for these commands now cover `.tickets/archive/` as well as `.tickets/` (tiqt-c4bb)
 
