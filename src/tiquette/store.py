@@ -897,3 +897,28 @@ def resolve_id(partial: str, candidates: Iterable[str]) -> str:
 def resolve_id_in_dir(partial: str, tickets_dir: Path) -> str:
     """Resolve a partial ticket ID against .md files in `tickets_dir`."""
     return resolve_id(partial, (p.stem for p in tickets_dir.glob("*.md")))
+
+
+# [AI]
+# Context: id-resolution requirement=id-resolution-across-commands
+# Intent: lookup-only commands (show/info/path/deps) must find archived
+#   tickets too, unlike mutation commands (edit/lifecycle), which stay on
+#   resolve_id_in_dir. A set union collapses a same-ID active+archive
+#   collision to one candidate, so it resolves rather than raising ambiguous.
+def resolve_id_including_archive(partial: str, tickets_dir: Path) -> str:
+    """Resolve a partial ticket ID against active and archived .md files."""
+    archive_dir = tickets_dir / "archive"
+    ids = {p.stem for p in tickets_dir.glob("*.md")}
+    if archive_dir.is_dir():
+        ids |= {p.stem for p in archive_dir.glob("*.md")}
+    return resolve_id(partial, ids)
+
+
+def ticket_home_dir(ticket_id: str, tickets_dir: Path) -> Path:
+    """Return the directory holding `ticket_id`: `tickets_dir` if active,
+    otherwise `tickets_dir / "archive"`. Caller must have already resolved
+    `ticket_id` to a full ID known to exist in one of the two.
+    """
+    if (tickets_dir / f"{ticket_id}.md").exists():
+        return tickets_dir
+    return tickets_dir / "archive"

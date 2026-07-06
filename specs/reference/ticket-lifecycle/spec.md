@@ -4,7 +4,7 @@ Covers ticket creation and status transitions: `create`, `start`, `close`, `canc
 
 ## Requirement: Create ticket
 
-The system SHALL create a ticket file in `.tickets/` when `tq create <title>` is invoked, and print the generated ID to stdout. The `<title>` positional SHALL be required; invoking `tq create` with no title SHALL exit non-zero with an argparse usage error. The system SHALL accept the field-options defined by `ticket-edit` plus `--link ID` (repeatable, symmetric) and `--note TEXT` (repeatable, timestamped) on the create surface.
+The system SHALL create a ticket file in `.tickets/` when `tq create <title>` is invoked, and print the generated ID to stdout. The `<title>` positional SHALL be required; invoking `tq create` with no title SHALL exit non-zero with an argparse usage error. The system SHALL accept the field-options defined by `ticket-edit` plus `--link ID` (repeatable, symmetric) and `--note TEXT` (repeatable, timestamped) on the create surface. Partial IDs passed to `--dep`/`--link`/`--parent` SHALL resolve against active tickets only, per the "ID resolution across commands" requirement in `id-resolution`.
 
 ### Scenario: Create with title
 - Given a clean tickets directory

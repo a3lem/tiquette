@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- fixed: `tq show`/`info`/`path`/`deps` no longer fail with `ticket '<id>' not found` on archived tickets; ID resolution and file lookup for these commands now cover `.tickets/archive/` as well as `.tickets/` (tiqt-c4bb)
+
 ## v0.2.4 – 2026-05-26
 
 - added: `tq start`/`close`/`cancel`/`reopen` accept `--note TEXT` (repeatable). Each note is appended to the `## Notes` section of every ticket whose status the invocation actually changed, auto-prefixed with a verb tag (`[started]`, `[closed]`, `[canceled]`, `[reopened]`). All notes in one invocation share a timestamp. Cascades via `-f/--force` propagate the same note(s) to every affected descendant. Failed transitions write no notes.

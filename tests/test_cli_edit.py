@@ -662,6 +662,23 @@ class TestPartialIDOnFieldValues:
         assert r.returncode == 0, r.stderr
         assert _read(td, "part-eeee").parent == "part-ffff"
 
+    # spec: id-resolution requirement=id-resolution-across-commands scenario=edits-dep-target-does-not-resolve-an-archive-only-id
+    def test_edit_dep_does_not_resolve_archive_only_id(self, tmp_path: Path) -> None:
+        """Mutation commands stay active-only, unlike show/info/path/deps."""
+        td = _make_dir(tmp_path)
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        _write(td, Ticket(id="act-0001", title="Subject"))
+        write_ticket(
+            Ticket(id="arc-9999", title="Archived target", status="closed"),
+            archive_dir,
+        )
+        r = run_tq(
+            "edit", "act-0001", "--dep", "9999", env={"TICKETS_DIR": str(td)}
+        )
+        assert r.returncode != 0
+        assert "ticket '9999' not found" in r.stderr
+
     def test_edit_undep_accepts_partial(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="part-gggg", title="Subject", deps=["part-hhhh"]))

@@ -522,6 +522,89 @@ class TestResolveId:
             resolve_id_in_dir("abc", tickets_dir)
 
 
+class TestResolveIdIncludingArchive:
+    """Partial ID resolution across active and archived tickets.
+    # spec: id-resolution requirement=partial-id-matching
+    """
+
+    # spec: id-resolution requirement=partial-id-matching scenario=exact-match-of-an-archived-ticket
+    def test_exact_match_of_archived_ticket(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, resolve_id_including_archive, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(Ticket(id="arc-1234", title="test", status="closed"), archive_dir)
+        assert resolve_id_including_archive("arc-1234", tickets_dir) == "arc-1234"
+
+    # spec: id-resolution requirement=partial-id-matching scenario=partial-match-of-an-archived-ticket
+    def test_partial_match_of_archived_ticket(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, resolve_id_including_archive, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(Ticket(id="arc-1234", title="test", status="closed"), archive_dir)
+        assert resolve_id_including_archive("1234", tickets_dir) == "arc-1234"
+
+    # spec: id-resolution requirement=partial-id-matching scenario=ambiguous-id-across-active-and-archived
+    def test_ambiguous_across_active_and_archived(self, tmp_path: Path) -> None:
+        from tiquette.store import (
+            AmbiguousIDError,
+            Ticket,
+            resolve_id_including_archive,
+            write_ticket,
+        )
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(Ticket(id="abc-1234", title="active"), tickets_dir)
+        write_ticket(Ticket(id="abc-5678", title="archived", status="closed"), archive_dir)
+        with pytest.raises(AmbiguousIDError, match="ambiguous ID 'abc'"):
+            resolve_id_including_archive("abc", tickets_dir)
+
+    # spec: id-resolution requirement=partial-id-matching scenario=active-ticket-wins-over-an-identically-named-archived-ticket
+    def test_active_wins_over_duplicate_archived_id(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, resolve_id_including_archive, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(Ticket(id="dup-0001", title="Active version"), tickets_dir)
+        write_ticket(
+            Ticket(id="dup-0001", title="Archived version", status="closed"),
+            archive_dir,
+        )
+        assert resolve_id_including_archive("dup-0001", tickets_dir) == "dup-0001"
+
+
+class TestTicketHomeDir:
+    """Locating which directory (active or archive) holds a resolved ticket."""
+
+    def test_active_ticket(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, ticket_home_dir, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        write_ticket(Ticket(id="act-0001", title="test"), tickets_dir)
+        assert ticket_home_dir("act-0001", tickets_dir) == tickets_dir
+
+    def test_archived_ticket(self, tmp_path: Path) -> None:
+        from tiquette.store import Ticket, ticket_home_dir, write_ticket
+
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(Ticket(id="arc-0001", title="test", status="closed"), archive_dir)
+        assert ticket_home_dir("arc-0001", tickets_dir) == archive_dir
+
+
 class TestNullableFieldsRoundtrip:
     """Nullable fields are omitted from the file when None and round-trip correctly."""
 

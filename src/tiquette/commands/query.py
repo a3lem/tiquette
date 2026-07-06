@@ -25,7 +25,8 @@ from tiquette.store import (
     read_ticket,
     read_ticket_with_body,
     resolve_id,
-    resolve_id_in_dir,
+    resolve_id_including_archive,
+    ticket_home_dir,
 )
 
 
@@ -234,9 +235,9 @@ def _ticket_to_dict(
 
 
 def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
-    """Resolve a partial ticket ID or exit with an error message."""
+    """Resolve a partial ticket ID (active or archived) or exit with an error."""
     try:
-        return resolve_id_in_dir(partial, tickets_dir)
+        return resolve_id_including_archive(partial, tickets_dir)
     except (TicketNotFoundError, AmbiguousIDError) as e:
         print(str(e), file=sys.stderr)
         sys.exit(1)
@@ -333,8 +334,9 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
+    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
 
-    ticket, body = read_ticket_with_body(ticket_id, tickets_dir)
+    ticket, body = read_ticket_with_body(ticket_id, ticket_dir)
 
     if args.json:
         print(
@@ -343,11 +345,11 @@ def _handle_show(args: argparse.Namespace) -> None:
         return
 
     # Read and print raw file content (frontmatter + body)
-    file_path = tickets_dir / f"{ticket_id}.md"
+    file_path = ticket_dir / f"{ticket_id}.md"
     print(file_path.read_text())
 
-    # Load all tickets for relationship sections
-    all_tickets = _load_all_tickets(tickets_dir)
+    # Load all tickets (active + archived) for relationship sections
+    all_tickets = _load_all_tickets(tickets_dir, source="all")
 
     # Blockers: deps that are not yet in a terminal state
     open_deps = [
@@ -397,8 +399,9 @@ def _handle_show(args: argparse.Namespace) -> None:
 def _handle_info(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
+    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
 
-    ticket = read_ticket(ticket_id, tickets_dir)
+    ticket = read_ticket(ticket_id, ticket_dir)
 
     if args.json:
         print(json.dumps(_ticket_to_dict(ticket), indent=2))
@@ -425,7 +428,8 @@ def _handle_info(args: argparse.Namespace) -> None:
 def _handle_path(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    file_path = tickets_dir / f"{ticket_id}.md"
+    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+    file_path = ticket_dir / f"{ticket_id}.md"
     print(file_path)
 
 
@@ -497,7 +501,7 @@ class _DepTreePrinter:
 def _handle_deps(args: argparse.Namespace) -> None:
     tickets_dir = find_tickets_dir()
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    all_tickets = _load_all_tickets(tickets_dir)
+    all_tickets = _load_all_tickets(tickets_dir, source="all")
     assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
 
     printer = _DepTreePrinter(all_tickets=all_tickets, full=args.full)

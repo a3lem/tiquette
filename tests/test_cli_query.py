@@ -366,6 +366,53 @@ class TestShowBehavior:
         assert data["title"] == "JSON test"
         assert "body" in data
 
+    # spec: ticket-query requirement=show-ticket scenario=show-displays-an-archived-ticket
+    def test_show_displays_archived_ticket(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="show-010", title="Archived ticket", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("show", "show-010", env=_make_env(td))
+        assert r.returncode == 0
+        assert "id: show-010" in r.stdout
+
+    # spec: ticket-query requirement=show-ticket scenario=show-resolves-an-archived-ticket-by-partial-id
+    def test_show_resolves_archived_ticket_by_partial_id(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="show-011", title="Archived ticket", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("show", "011", env=_make_env(td))
+        assert r.returncode == 0
+        assert "id: show-011" in r.stdout
+
+    # spec: ticket-query requirement=show-ticket scenario=show-renders-an-archived-tickets-reverse-dependency
+    def test_show_renders_archived_reverse_dependency(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="show-012", title="Dependent", status="closed", deps=["show-013"]),
+            archive_dir,
+        )
+        write_ticket(
+            Ticket(id="show-013", title="Dependency", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("show", "show-013", env=_make_env(td))
+        assert r.returncode == 0
+        assert "## Blocking" in r.stdout
+        assert "show-012" in r.stdout
+
 
 class TestInfoBehavior:
     """Behavioral tests for `tq info`."""
@@ -381,6 +428,20 @@ class TestInfoBehavior:
         assert "status:" in r.stdout
         # Info should NOT contain the body/description
         assert "# Info ticket" not in r.stdout
+
+    # spec: ticket-query requirement=info-command scenario=info-displays-an-archived-ticket
+    def test_info_displays_archived_ticket(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="info-010", title="Archived ticket", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("info", "info-010", env=_make_env(td))
+        assert r.returncode == 0
+        assert "id: info-010" in r.stdout
 
     def test_info_as_json(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
@@ -410,6 +471,20 @@ class TestPathBehavior:
         r = run_tq_env("path", "test-001", env=_make_env(td))
         assert r.returncode == 0
         assert ".tickets/test-001.md" in r.stdout
+
+    # spec: ticket-query requirement=path-command scenario=path-prints-archive-file-location
+    def test_path_prints_archive_file_location(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="test-010", title="Archived path ticket", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("path", "test-010", env=_make_env(td))
+        assert r.returncode == 0
+        assert ".tickets/archive/test-010.md" in r.stdout
 
 
 class TestLsBehavior:
@@ -949,6 +1024,25 @@ class TestDepsBehavior:
         deep_idx = next(i for i, l in enumerate(lines) if "ds-deep" in l and "ds-deeper" not in l)
         shallow_idx = next(i for i, l in enumerate(lines) if "ds-shallow" in l)
         assert deep_idx < shallow_idx
+
+    # spec: ticket-query requirement=show-dependency-tree scenario=dependency-tree-rooted-at-an-archived-ticket
+    def test_deps_tree_rooted_at_archived_ticket(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        archive_dir = td / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="task-0010", title="Archived root", status="closed", deps=["task-0011"]),
+            archive_dir,
+        )
+        write_ticket(
+            Ticket(id="task-0011", title="Archived dep", status="closed"),
+            archive_dir,
+        )
+        r = run_tq_env("deps", "task-0010", env=_make_env(td))
+        assert r.returncode == 0
+        assert "task-0010" in r.stdout
+        assert "task-0011" in r.stdout
 
 
 class TestTagsBehavior:

@@ -284,6 +284,28 @@ class TestCreateBehavior:
         content = _read_ticket_file(tickets_dir, ticket_id)
         assert "deps: [dep-001, dep-002]" in content
 
+    # spec: id-resolution requirement=id-resolution-across-commands scenario=creates-dep-target-does-not-resolve-an-archive-only-id
+    def test_create_dep_does_not_resolve_archive_only_id(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Create's --dep target stays active-only, unlike show/info/path/deps."""
+        from tiquette.store import write_ticket
+        monkeypatch.chdir(tmp_path)
+        tickets_dir = tmp_path / ".tickets"
+        tickets_dir.mkdir()
+        archive_dir = tickets_dir / "archive"
+        archive_dir.mkdir()
+        write_ticket(
+            Ticket(id="arc-8888", title="Archived target", status="closed"),
+            archive_dir,
+        )
+        result = run_tq(
+            "create", "New ticket", "--dep", "8888",
+            env={"TICKETS_DIR": str(tickets_dir)},
+        )
+        assert result.returncode != 0
+        assert "ticket '8888' not found" in result.stderr
+
     # spec: ticket-lifecycle requirement=default-field-values
     def test_create_default_fields(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(tmp_path)

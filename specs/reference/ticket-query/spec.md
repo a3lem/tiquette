@@ -4,7 +4,7 @@ Covers commands for viewing and listing tickets: `show`, `info`, `ls`, `dep tree
 
 ## Requirement: Show ticket
 
-The system SHALL display a ticket's full content (frontmatter + body) when `tq show <id>` is invoked.
+The system SHALL display a ticket's full content (frontmatter + body) when `tq show <id>` is invoked, whether the ticket is active or archived.
 
 ### Scenario: Show displays ticket content
 - Given ticket "show-001" exists with title "Test ticket"
@@ -65,9 +65,29 @@ The system SHALL display a ticket's full content (frontmatter + body) when `tq s
 - And the output is valid JSON
 - And the JSON contains fields: id, status, type, priority, title, body
 
+### Scenario: Show displays an archived ticket
+- Given ticket "show-010" is closed and archived
+- When the user runs `tq show show-010`
+- Then the command exits 0
+- And the output contains "id: show-010"
+
+### Scenario: Show resolves an archived ticket by partial ID
+- Given ticket "show-011" is closed and archived
+- When the user runs `tq show 011`
+- Then the command exits 0
+- And the output contains "id: show-011"
+
+### Scenario: Show renders an archived ticket's reverse dependency
+- Given ticket "show-012" depends on "show-013"
+- And "show-012" and "show-013" are closed and archived together
+- When the user runs `tq show show-013`
+- Then the command exits 0
+- And the output contains "## Blocking"
+- And the output contains "show-012"
+
 ## Requirement: Info command
 
-The system SHALL display a ticket's frontmatter and computed relationships (without body content) when `tq info <id>` is invoked.
+The system SHALL display a ticket's frontmatter and computed relationships (without body content) when `tq info <id>` is invoked, whether the ticket is active or archived.
 
 ### Scenario: Info displays frontmatter and relationships
 - Given ticket "info-001" exists with title "Test ticket"
@@ -89,6 +109,12 @@ The system SHALL display a ticket's frontmatter and computed relationships (with
 - When the user runs `tq info nonexistent`
 - Then the command exits non-zero
 - And stderr contains "ticket 'nonexistent' not found"
+
+### Scenario: Info displays an archived ticket
+- Given ticket "info-010" is closed and archived
+- When the user runs `tq info info-010`
+- Then the command exits 0
+- And the output contains "id: info-010"
 
 ## Requirement: List tickets
 
@@ -341,7 +367,7 @@ The system SHALL render parent-child relationships as indented trees in `ls` out
 
 ## Requirement: Show dependency tree
 
-The system SHALL display a transitive dependency tree when `tq deps <id>` is invoked.
+The system SHALL display a transitive dependency tree when `tq deps <id>` is invoked. The root and any transitive dependency may be active or archived.
 
 ### Scenario: Dependency tree shows transitive deps
 - Given "task-0001" depends on "task-0002", which depends on "task-0003"
@@ -363,6 +389,12 @@ The system SHALL display a transitive dependency tree when `tq deps <id>` is inv
 - Given dependencies with varying subtree depths
 - When the user runs `tq deps task-0001`
 - Then children are sorted by subtree depth ascending, then by ID
+
+### Scenario: Dependency tree rooted at an archived ticket
+- Given "task-0010" depends on "task-0011"
+- And "task-0010" and "task-0011" are closed and archived
+- When the user runs `tq deps task-0010`
+- Then the output contains both "task-0010" and "task-0011" with status and title
 
 ## Requirement: Tags listing
 
@@ -464,12 +496,17 @@ When a ticket is blocked from archiving, any terminal ticket it references SHALL
 
 ## Requirement: Path command
 
-The system SHALL print the file path of a ticket when `tq path <id>` is invoked.
+The system SHALL print the file path of a ticket when `tq path <id>` is invoked, whether the ticket is active or archived.
 
 ### Scenario: Path prints file location
 - Given ticket "test-001" exists
 - When the user runs `tq path test-001`
 - Then the output contains ".tickets/test-001.md"
+
+### Scenario: Path prints archive file location
+- Given ticket "test-010" is closed and archived
+- When the user runs `tq path test-010`
+- Then the output contains ".tickets/archive/test-010.md"
 
 ## Requirement: List source axis
 
