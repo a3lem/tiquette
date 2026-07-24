@@ -114,7 +114,9 @@ The system SHALL add each value supplied to `--dep ID` to the ticket's
 deps list when `tq edit` is invoked, treating the ticket as blocked by
 each dep. The system SHALL remove each value supplied to `--undep ID`
 from the deps list. The system SHALL reject adds that would introduce a
-cycle. Both flags SHALL be repeatable.
+cycle. Both flags SHALL be repeatable. `--dep`/`--undep` targets SHALL
+resolve per the active-only rule in `id-resolution`'s "ID resolution
+across commands" requirement.
 
 #### Scenario: Add and remove deps in one call
 - Given ticket "edit-006" depends on "edit-006a"
@@ -134,7 +136,9 @@ The system SHALL add each value supplied to `--link ID` to the ticket's
 links list when `tq edit` is invoked. Links SHALL be symmetric: the
 target ticket SHALL be updated to back-reference the source. The system
 SHALL remove each value supplied to `--unlink ID` from both sides. Both
-flags SHALL be repeatable.
+flags SHALL be repeatable. `--link`/`--unlink` targets SHALL resolve per
+the active-only rule in `id-resolution`'s "ID resolution across
+commands" requirement.
 
 #### Scenario: Link is symmetric
 - Given tickets "edit-007" and "edit-007b" exist with no links
@@ -152,7 +156,8 @@ flags SHALL be repeatable.
 The system SHALL set the ticket's `parent` field to the supplied id when
 `--parent ID` is given to `tq edit`. The system SHALL reject parent
 assignments that would introduce a cycle (a ticket cannot be its own
-ancestor).
+ancestor). `--parent` targets SHALL resolve per the active-only rule in
+`id-resolution`'s "ID resolution across commands" requirement.
 
 #### Scenario: Re-parent a ticket
 - Given ticket "edit-008" has parent "edit-008a"

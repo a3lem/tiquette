@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import sys
 from tiquette.timestamps import now_iso
-from pathlib import Path
 
 from tiquette.commands._fields import add_create_flags, namespace_to_field_changes
 from tiquette.store import (
@@ -11,15 +10,14 @@ from tiquette.store import (
     Status,
     Ticket,
     TicketNotFoundError,
-    TicketsNotFoundError,
     _append_note,
     apply_field_changes,
-    find_tickets_dir,
     generate_id,
     is_terminal,
     load_all_tickets,
     read_ticket,
     resolve_id_in_dir,
+    resolve_store,
     write_ticket,
 )
 
@@ -86,10 +84,12 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 #   apply_field_changes pipeline. The note timestamp is the same UTC
 #   instant as the ticket's `created` field (one clock read per call).
 def _handle_create(args: argparse.Namespace) -> None:
-    try:
-        tickets_dir = find_tickets_dir()
-    except TicketsNotFoundError:
-        tickets_dir = Path.cwd() / ".tickets"
+    # [AI]
+    # Context: monorepo-store-targeting -- ticket-store requirement=store-targeting-with-dir
+    # Intent: --dir initialises <path>/.tickets; without it, an existing store
+    #   (env/walk-up) is preferred, else a fresh .tickets in cwd. must_exist=False
+    #   folds the old catch-TicketsNotFoundError-then-mkdir logic into the resolver.
+    tickets_dir = resolve_store(args.dir, must_exist=False)
     tickets_dir.mkdir(parents=True, exist_ok=True)
 
     now = now_iso()
@@ -167,7 +167,7 @@ def _check_last_open_child(
 #       before writing; (3) mutate + emit. This extends the existing single-ticket
 #       "leave it re-runnable on partial failure" guarantee to the whole batch.
 def _handle_status(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     target: Status = args.target_status
 
     # [AI] status-transition-notes: one timestamp per invocation, shared across

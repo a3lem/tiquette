@@ -834,7 +834,7 @@ class TestCascadeOrder:
 
         with patch.object(lc, "write_ticket", side_effect=failing_write):
             import argparse
-            ns = argparse.Namespace(id=["par-0001"], target_status=lc.Status.CLOSED, force=True)
+            ns = argparse.Namespace(id=["par-0001"], target_status=lc.Status.CLOSED, force=True, dir=None)
             try:
                 lc._handle_status(ns)
             except (OSError, SystemExit):

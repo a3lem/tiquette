@@ -9,8 +9,8 @@ from pathlib import Path
 from tiquette.store import (
     Ticket,
     abbreviate,
-    find_tickets_dir,
     iter_tickets,
+    resolve_store,
     write_ticket,
 )
 from tiquette.timestamps import parse_iso, to_iso
@@ -240,7 +240,7 @@ def _normalize_timestamps(dirs: list[Path]) -> int:
 
 
 def _handle_autofix(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     dirs = _all_ticket_dirs(tickets_dir)
     all_ids = _existing_ids(dirs)
 

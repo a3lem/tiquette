@@ -71,6 +71,8 @@ View:
     -A, --assignee NAME                 Filter by assignee
     --parent ID                         Show ticket and its descendants as a tree
     --dep ID                            Show tickets that directly depend on ID (flat list)
+    -r, --recursive                     Aggregate every store at/below the root, grouped by
+                                        store path (read-only; not with --parent/--dep)
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
@@ -95,6 +97,13 @@ Examples
 
 ## Notes
 
+- Monorepo targeting: `--dir PATH` is a global option (before the command word,
+  e.g. `tq --dir packages/api ls`) selecting the store at `PATH/.tickets`. It
+  overrides `TICKETS_DIR` and walk-up. `ls -r` aggregates every `.tickets/` at or
+  below the root (the `--dir` path, else cwd) into a read-only overview grouped by
+  store path (root store heading `.`); `-r --jsonl` emits a flat stream tagging
+  each object with its `store`. Stores are isolated: `deps`/`links`/`parent` only
+  reference tickets in the same store, so a cross-store target is "not found".
 - `edit` is the only post-creation mutation path. Field options are anchored
   under `create` (the common path) and `edit` extends them with the removers.
   Removed verbs (`tag`, `nest`, `change-prio`, `describe`, ...) are gone, not

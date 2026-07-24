@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from tiquette.store import find_tickets_dir, load_all_tickets
+from tiquette.store import load_all_tickets, resolve_store
 
 
 # [AI]
@@ -84,7 +84,7 @@ def _format_summary(errors: int, warnings: int) -> str:
 
 
 def _handle_validate(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     problems = _collect_problems(tickets_dir)
 
     errors = 0

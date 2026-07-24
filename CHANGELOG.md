@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+- added: global `--dir PATH` option (before the command word) targets the store at `PATH/.tickets`, overriding `TICKETS_DIR` and walk-up. Works for every command; in a monorepo it lets an agent create/read/edit a specific project's tickets without `cd`.
+- added: `tq ls -r`/`--recursive` aggregates every `.tickets/` store at or below the root (the `--dir` path, else cwd) into a read-only overview grouped by store path (root store heading `.`). Skips `.git`/`node_modules` and never treats a store's `archive/` as a separate store. Mutually exclusive with `--parent`/`--dep`.
+- added: `tq ls -r --jsonl` emits a flat stream of one object per ticket across all stores, each tagged with a `store` field (relative path) — the machine-facing monorepo overview.
+- changed: `deps`/`links`/`parent` are documented and enforced as store-local; a relationship target that exists only in another store is rejected as "not found". ID resolution never spans stores.
+
 ## v0.2.5 – 2026-07-06
 
 - fixed: `tq show`/`info`/`path`/`deps` no longer fail with `ticket '<id>' not found` on archived tickets; ID resolution and file lookup for these commands now cover `.tickets/archive/` as well as `.tickets/` (tiqt-c4bb)

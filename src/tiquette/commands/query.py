@@ -19,13 +19,14 @@ from tiquette.store import (
     Ticket,
     TicketNotFoundError,
     TicketSource,
-    find_tickets_dir,
+    discover_stores,
     is_terminal,
     load_all_tickets,
     read_ticket,
     read_ticket_with_body,
     resolve_id,
     resolve_id_including_archive,
+    resolve_store,
     ticket_home_dir,
 )
 
@@ -143,6 +144,17 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
         "--dep",
         metavar="ID",
         help="Show tickets that directly depend on <ID> (flat list)",
+    )
+    # [AI]
+    # Context: monorepo-store-targeting -- ticket-query requirement=recursive-listing-across-stores
+    # Intent: aggregate every store at/below the root (--dir else cwd) into one
+    #   read-only overview. Mutually exclusive with --parent/--dep (guarded in
+    #   the handler, since those name a single ticket with no cross-store meaning).
+    p_ls.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Aggregate all stores at or below the root (read-only)",
     )
     p_ls.add_argument(
         "--sort",
@@ -332,7 +344,7 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 # [AI] Show full ticket content: frontmatter, body, and relationship sections
 # (blockers, blocking, children, linked). JSON mode outputs structured data.
 def _handle_show(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
     ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
 
@@ -397,7 +409,7 @@ def _handle_show(args: argparse.Namespace) -> None:
 
 # [AI] Info shows frontmatter and relationships but no body/description.
 def _handle_info(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
     ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
 
@@ -426,7 +438,7 @@ def _handle_info(args: argparse.Namespace) -> None:
 
 
 def _handle_path(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
     ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
     file_path = ticket_dir / f"{ticket_id}.md"
@@ -499,7 +511,7 @@ class _DepTreePrinter:
 # Without --full, deduplicates nodes (shows each dep once).
 # Children sorted by subtree depth (deepest first), then by ID.
 def _handle_deps(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     ticket_id = _resolve_or_exit(args.id, tickets_dir)
     all_tickets = _load_all_tickets(tickets_dir, source="all")
     assert ticket_id in all_tickets, f"resolved ID {ticket_id} not in tickets"
@@ -777,6 +789,59 @@ def _render_tree(
 
 
 # [AI]
+# Context: monorepo-store-targeting -- ticket-query requirement=recursive-listing-across-stores
+# Intent: render each discovered store as its own section (heading = store path
+#   relative to root, root store == "."), reusing the single-store pipeline per
+#   store. Empty stores are omitted; --limit applies within each store.
+def _render_recursive_tree(
+    args: argparse.Namespace, root: Path, stores: list[Path]
+) -> None:
+    first = True
+    for store_dir in stores:
+        all_tickets = _select_source(args, store_dir)
+        if not all_tickets:
+            continue
+        filtered = _apply_filter(args, all_tickets.values(), all_tickets, store_dir)
+        if not filtered:
+            continue
+        heading = str(store_dir.parent.relative_to(root))
+        if not first:
+            print()
+        first = False
+        print(heading)
+        _render_tree(filtered, args, all_tickets, None, None, store_dir)
+
+
+# [AI]
+# Context: monorepo-store-targeting -- ticket-query requirement=recursive-listing-across-stores
+# Intent: machine-facing overview -- one flat JSON object per ticket across all
+#   stores, each tagged with its store path. No section headings. --limit caps
+#   per store, matching the human render.
+def _render_recursive_jsonl(
+    args: argparse.Namespace, root: Path, stores: list[Path]
+) -> None:
+    for store_dir in stores:
+        all_tickets = _select_source(args, store_dir)
+        if not all_tickets:
+            continue
+        filtered = _apply_filter(args, all_tickets.values(), all_tickets, store_dir)
+        heading = str(store_dir.parent.relative_to(root))
+        for t in filtered[: args.limit] if args.limit else filtered:
+            data = _ticket_to_dict(t)
+            data["store"] = heading
+            print(json.dumps(data))
+
+
+def _handle_ls_recursive(args: argparse.Namespace) -> None:
+    root = (Path(args.dir) if args.dir is not None else Path.cwd()).resolve()
+    stores = discover_stores(root)
+    if args.jsonl:
+        _render_recursive_jsonl(args, root, stores)
+    else:
+        _render_recursive_tree(args, root, stores)
+
+
+# [AI]
 # Context: ls decomposition -- ticket-query requirement=list-tickets
 # Intent: thin driver; delegates to pipeline stages so each concern is isolated.
 def _handle_ls(args: argparse.Namespace) -> None:
@@ -788,7 +853,17 @@ def _handle_ls(args: argparse.Namespace) -> None:
         print("error: --parent requires a non-empty ticket ID", file=sys.stderr)
         sys.exit(1)
 
-    tickets_dir = find_tickets_dir()
+    # [AI]
+    # Context: monorepo-store-targeting -- requirement=recursive-listing-across-stores
+    # Intent: -r names no single ticket, so --parent/--dep have no meaning under it.
+    if args.recursive and (args.parent is not None or args.dep is not None):
+        print("error: -r cannot be combined with --parent or --dep", file=sys.stderr)
+        sys.exit(2)
+    if args.recursive:
+        _handle_ls_recursive(args)
+        return
+
+    tickets_dir = resolve_store(args.dir)
     all_tickets = _select_source(args, tickets_dir)
     try:
         candidate_ids, scope_root = _apply_scope(args, all_tickets)
@@ -823,7 +898,7 @@ def _handle_ls(args: argparse.Namespace) -> None:
 
 # [AI] List all tags with counts, sorted descending. Excludes terminal tickets.
 def _handle_tags(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     all_tickets = _load_all_tickets(tickets_dir)
 
     tag_counts: Counter[str] = Counter()
@@ -842,7 +917,7 @@ def _handle_tags(args: argparse.Namespace) -> None:
 
 # [AI] List all unique link pairs as "id-a <-> id-b" (sorted, deduped).
 def _handle_links(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     all_tickets = _load_all_tickets(tickets_dir)
 
     seen_pairs: set[tuple[str, str]] = set()
@@ -921,7 +996,7 @@ def _move_to_archive(
 #   by non-terminal tickets. Reverse-reference index propagates unarchivable
 #   IDs along every outgoing reference (deps, links, parent).
 def _handle_archive(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     all_tickets = _load_all_tickets(tickets_dir)
 
     terminal_ids = {t.id for t in all_tickets.values() if is_terminal(t.status)}
@@ -993,7 +1068,7 @@ def _handle_prune(args: argparse.Namespace) -> None:
             )
             sys.exit(2)
 
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
     archived = load_all_tickets(tickets_dir, source="archived")
     matches = sorted(
         t.id

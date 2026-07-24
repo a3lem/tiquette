@@ -13,7 +13,13 @@ uv tool install git+https://github.com/a3lem/tiquette
 ```
 tq (tiquette) - a minimal ticket system with dependency tracking
 
-Usage: tq <command> [args]
+Usage: tq [--dir PATH] <command> [args]
+
+Global options (before the command)
+-----------------------------------
+  --dir PATH                            Operate on the store at PATH/.tickets.
+                                        Overrides TICKETS_DIR and walk-up. In a
+                                        monorepo, targets one project's tickets.
 
 Frequently Used
 ---------------
@@ -76,6 +82,8 @@ View:
     -A, --assignee NAME                 Filter by assignee
     --parent ID                         Show ticket and its descendants as a tree
     --dep ID                            Show tickets that directly depend on ID (flat list)
+    -r, --recursive                     Aggregate every store at/below the root, grouped by
+                                        store path (read-only; not with --parent/--dep)
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)

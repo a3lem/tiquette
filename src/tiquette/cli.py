@@ -17,7 +17,7 @@ from tiquette.store import TicketParseError, TicketsNotFoundError
 HELP_SUMMARY = """\
 tq - a minimal ticket system with dependency tracking
 
-Usage: tq <command> [args]
+Usage: tq [--dir PATH] <command> [args]
 
 Lifecycle:
   create <title>                        Create ticket, prints ID
@@ -48,7 +48,13 @@ Run tq --help for full reference with all flags and options.
 HELP_TEXT = """\
 tq (tiquette) - a minimal ticket system with dependency tracking
 
-Usage: tq <command> [args]
+Usage: tq [--dir PATH] <command> [args]
+
+Global options (before the command)
+-----------------------------------
+  --dir PATH                            Operate on the store at PATH/.tickets.
+                                        Overrides TICKETS_DIR and walk-up. In a
+                                        monorepo, targets one project's tickets.
 
 Frequently Used
 ---------------
@@ -111,6 +117,8 @@ View:
     -A, --assignee NAME                 Filter by assignee
     --parent ID                         Show ticket and its descendants as a tree
     --dep ID                            Show tickets that directly depend on ID (flat list)
+    -r, --recursive                     Aggregate every store at/below the root, grouped by
+                                        store path (read-only; not with --parent/--dep)
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
@@ -171,6 +179,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"tq (tiquette) {__version__}",
         help="Show version and exit",
+    )
+    # [AI]
+    # Context: monorepo-store-targeting -- ticket-store requirement=store-targeting-with-dir
+    # Intent: global option, declared before add_subparsers so it lands on the
+    #   shared namespace (args.dir) for every command. Must precede the command
+    #   word: `tq --dir packages/api ls`. Targets <path>/.tickets, overriding
+    #   TICKETS_DIR and walk-up.
+    parser.add_argument(
+        "--dir",
+        dest="dir",
+        metavar="PATH",
+        default=None,
+        help="Operate on the store at PATH/.tickets (overrides TICKETS_DIR and walk-up)",
     )
 
     subparsers = parser.add_subparsers(dest="command")

@@ -13,9 +13,9 @@ from tiquette.store import (
     FieldChangeError,
     TicketNotFoundError,
     apply_field_changes,
-    find_tickets_dir,
     read_ticket,
     resolve_id_in_dir,
+    resolve_store,
     write_ticket,
 )
 
@@ -28,7 +28,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def _handle_edit(args: argparse.Namespace) -> None:
-    tickets_dir = find_tickets_dir()
+    tickets_dir = resolve_store(args.dir)
 
     try:
         ticket_id = resolve_id_in_dir(args.id, tickets_dir)

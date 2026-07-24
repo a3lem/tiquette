@@ -189,6 +189,59 @@ def find_tickets_dir() -> Path:
     raise TicketsNotFoundError("no .tickets directory found")
 
 
+# [AI]
+# Context: monorepo-store-targeting -- ticket-store requirement=store-targeting-with-dir
+# Intent: single resolver for "which store". `--dir` (explicit_dir) always
+#   prevails: the store is <explicit_dir>/.tickets, resolved to an absolute
+#   path (matching find_tickets_dir, which also returns absolute paths), with
+#   no walk-up and TICKETS_DIR ignored. Otherwise defer to find_tickets_dir.
+#   must_exist=False is the create path: prefer an existing store, else point
+#   at where a fresh one should be initialised.
+def resolve_store(explicit_dir: str | None = None, *, must_exist: bool = True) -> Path:
+    if explicit_dir is not None:
+        store = Path(explicit_dir).resolve() / TICKETS_DIR_NAME
+        if must_exist and not store.is_dir():
+            raise TicketsNotFoundError("no .tickets directory found")
+        return store
+    if must_exist:
+        return find_tickets_dir()
+    try:
+        return find_tickets_dir()
+    except TicketsNotFoundError:
+        return Path.cwd() / TICKETS_DIR_NAME
+
+
+# [AI]
+# Context: monorepo-store-targeting -- ticket-store requirement=recursive-store-discovery
+# Intent: directories that never hold a project store; pruned from the `-r`
+#   walk so a monorepo's node_modules/.git don't get scanned (both a
+#   correctness and a performance concern).
+_DISCOVERY_SKIP_DIRS: frozenset[str] = frozenset(
+    {".git", "node_modules", ".venv", "__pycache__", ".tox", "dist", "build",
+     ".mypy_cache", ".ruff_cache"}
+)
+
+
+# [AI]
+# Context: monorepo-store-targeting -- ticket-store requirement=recursive-store-discovery
+# Intent: every `.tickets/` at or below `root`, ordered by the lexicographic
+#   relative path of the directory that contains it (root's own store sorts to
+#   "."). We never descend into a discovered store (so its archive/ is not a
+#   second store) and prune VCS/dependency dirs. A project that has tickets can
+#   still nest sub-projects that have their own, so only the store dir itself is
+#   removed from the walk, not the whole subtree.
+def discover_stores(root: Path) -> list[Path]:
+    root = root.resolve()
+    stores: list[Path] = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        if TICKETS_DIR_NAME in dirnames:
+            stores.append(Path(dirpath) / TICKETS_DIR_NAME)
+            dirnames.remove(TICKETS_DIR_NAME)
+        dirnames[:] = [d for d in dirnames if d not in _DISCOVERY_SKIP_DIRS]
+    stores.sort(key=lambda s: os.path.relpath(s.parent, root))
+    return stores
+
+
 # ── ID generation ───────────────────────────────────────────
 
 
