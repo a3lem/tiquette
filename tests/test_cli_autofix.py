@@ -1,6 +1,7 @@
 """Tests for `tq autofix`.
 # spec: ticket-store
 """
+
 from __future__ import annotations
 
 import os
@@ -10,7 +11,9 @@ from pathlib import Path
 from tiquette.store import Ticket, read_ticket, write_ticket
 
 
-def _run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
@@ -103,10 +106,12 @@ class TestAutofix:
         archive = td / "archive"
         archive.mkdir()
         write_ticket(Ticket(id="tiquette-aaaa", title="Stale long prefix"), td)
-        write_ticket(Ticket(id="tk-bbbb", title="Old tk import",
-                            deps=["tiquette-aaaa"]), td)
-        write_ticket(Ticket(id="foo-zzzz", title="Non-hex suffix",
-                            parent="tk-bbbb"), td)
+        write_ticket(
+            Ticket(id="tk-bbbb", title="Old tk import", deps=["tiquette-aaaa"]), td
+        )
+        write_ticket(
+            Ticket(id="foo-zzzz", title="Non-hex suffix", parent="tk-bbbb"), td
+        )
         write_ticket(Ticket(id="tiquette-cccc", title="Archived stale"), archive)
 
         r = _run("autofix", env={"TICKETS_DIR": str(td)})
@@ -135,7 +140,6 @@ class TestAutofix:
     # See specs/changes/cli-redesign-v1.2/deltas/ticket-autofix/spec.md
     # -----------------------------------------------------------------------
 
-
     # -----------------------------------------------------------------------
     # NEW in v1.2: migrate-completed-status-to-closed
     # See specs/changes/cli-redesign-v1.2/deltas/ticket-autofix/spec.md
@@ -159,7 +163,9 @@ class TestAutofix:
         archive = td / "archive"
         archive.mkdir()
         path = archive / "proj-arc1.md"
-        path.write_text("---\nid: proj-arc1\nstatus: completed\ntitle: Archived done\n---\n")
+        path.write_text(
+            "---\nid: proj-arc1\nstatus: completed\ntitle: Archived done\n---\n"
+        )
         r = _run("autofix", env={"TICKETS_DIR": str(td)})
         assert r.returncode == 0, r.stderr
         content = path.read_text()
@@ -184,7 +190,9 @@ class TestAutofix:
     # spec: ticket-autofix requirement=migrate-completed-status-to-closed scenario=no-completed-tickets-is-a-no-op
     def test_no_completed_tickets_no_migration_line(self, tmp_path: Path) -> None:
         td = _make_project(tmp_path, "proj")
-        (td / "proj-open.md").write_text("---\nid: proj-open\nstatus: open\ntitle: Open\n---\n")
+        (td / "proj-open.md").write_text(
+            "---\nid: proj-open\nstatus: open\ntitle: Open\n---\n"
+        )
         r = _run("autofix", env={"TICKETS_DIR": str(td)})
         assert r.returncode == 0, r.stderr
         assert "from completed status" not in r.stdout
@@ -210,8 +218,11 @@ class TestAutofix:
         archive.mkdir()
         write_ticket(Ticket(id="tiquette-a1c1", title="Archived"), archive)
         write_ticket(
-            Ticket(id="tiquette-bbbb", title="Active linking archived",
-                   links=["tiquette-a1c1"]),
+            Ticket(
+                id="tiquette-bbbb",
+                title="Active linking archived",
+                links=["tiquette-a1c1"],
+            ),
             td,
         )
 

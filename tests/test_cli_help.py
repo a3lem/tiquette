@@ -6,6 +6,7 @@ against the pre-v1.2 implementation.
 
 # spec: ticket-lifecycle ticket-edit ticket-query
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -143,22 +144,27 @@ class TestHelpCommands:
         # The removed standalone verb was listed as a top-level command;
         # in v1.2 it should not be listed as a command.
         lines = result.stdout.splitlines()
-        command_lines = [l for l in lines if l.startswith("  ") and not l.startswith("   ")]
+        command_lines = [
+            l for l in lines if l.startswith("  ") and not l.startswith("   ")
+        ]
         # No line should start with "  tag " as a standalone command entry
-        assert not any(l.strip().startswith("tag ") for l in command_lines), \
+        assert not any(l.strip().startswith("tag ") for l in command_lines), (
             "removed 'tag' verb should not appear as a command"
+        )
 
     def test_untag_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        assert not any(l.strip().startswith("untag ") for l in lines), \
+        assert not any(l.strip().startswith("untag ") for l in lines), (
             "removed 'untag' verb should not appear as a command"
+        )
 
     def test_dep_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        assert not any(l.strip() == "dep" or l.strip().startswith("dep ") for l in lines), \
-            "removed 'dep' verb should not appear as a command"
+        assert not any(
+            l.strip() == "dep" or l.strip().startswith("dep ") for l in lines
+        ), "removed 'dep' verb should not appear as a command"
 
     def test_undep_verb_absent(self) -> None:
         result = run_tq("--help")
@@ -168,7 +174,9 @@ class TestHelpCommands:
     def test_nest_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        assert not any(l.strip() == "nest" or l.strip().startswith("nest ") for l in lines)
+        assert not any(
+            l.strip() == "nest" or l.strip().startswith("nest ") for l in lines
+        )
 
     def test_unnest_verb_absent(self) -> None:
         result = run_tq("--help")
@@ -180,19 +188,27 @@ class TestHelpCommands:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
         # Must not appear as a top-level command (two-space indent, not under edit's flags)
-        command_level = [l for l in lines if l.startswith("  ") and not l.startswith("   ")]
-        assert not any(l.strip() == "link" or l.strip().startswith("link ") for l in command_level)
+        command_level = [
+            l for l in lines if l.startswith("  ") and not l.startswith("   ")
+        ]
+        assert not any(
+            l.strip() == "link" or l.strip().startswith("link ") for l in command_level
+        )
 
     def test_unlink_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        command_level = [l for l in lines if l.startswith("  ") and not l.startswith("   ")]
+        command_level = [
+            l for l in lines if l.startswith("  ") and not l.startswith("   ")
+        ]
         assert not any(l.strip().startswith("unlink ") for l in command_level)
 
     def test_assign_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        assert not any(l.strip() == "assign" or l.strip().startswith("assign ") for l in lines)
+        assert not any(
+            l.strip() == "assign" or l.strip().startswith("assign ") for l in lines
+        )
 
     def test_change_prio_absent(self) -> None:
         result = run_tq("--help")
@@ -205,7 +221,9 @@ class TestHelpCommands:
     def test_describe_verb_absent(self) -> None:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
-        assert not any(l.strip() == "describe" or l.strip().startswith("describe ") for l in lines)
+        assert not any(
+            l.strip() == "describe" or l.strip().startswith("describe ") for l in lines
+        )
 
     def test_add_note_verb_absent(self) -> None:
         result = run_tq("--help")
@@ -215,7 +233,9 @@ class TestHelpCommands:
         result = run_tq("--help")
         lines = result.stdout.splitlines()
         # xref appears as a flag name (--xref) but NOT as a standalone command
-        assert not any(l.strip() == "xref" or l.strip().startswith("xref ") for l in lines)
+        assert not any(
+            l.strip() == "xref" or l.strip().startswith("xref ") for l in lines
+        )
 
 
 class TestHelpStatusVocabulary:
@@ -233,7 +253,10 @@ class TestHelpStatusVocabulary:
     def test_close_describes_closed_status(self) -> None:
         result = run_tq("--help")
         # The close command description must say "closed"
-        assert "status to closed" in result.stdout or "Set status to closed" in result.stdout
+        assert (
+            "status to closed" in result.stdout
+            or "Set status to closed" in result.stdout
+        )
 
 
 class TestEditHelp:
@@ -321,8 +344,20 @@ class TestCreateHelp:
 
     def test_create_help_has_all_shared_flags(self) -> None:
         result = run_tq("create", "--help")
-        for flag in ["-d", "--description", "-t", "--type", "-p", "--priority",
-                     "-A", "--assignee", "--xref", "--parent", "--tag", "--dep"]:
+        for flag in [
+            "-d",
+            "--description",
+            "-t",
+            "--type",
+            "-p",
+            "--priority",
+            "-A",
+            "--assignee",
+            "--xref",
+            "--parent",
+            "--tag",
+            "--dep",
+        ]:
             assert flag in result.stdout, f"Flag '{flag}' missing from create help"
 
 
@@ -344,8 +379,17 @@ class TestLsHelp:
 
     def test_ls_help_has_all_filters(self) -> None:
         result = run_tq("ls", "--help")
-        for flag in ["--status", "--ready", "--blocked", "--assignee",
-                     "--tag", "--type", "--sort", "--limit", "--jsonl"]:
+        for flag in [
+            "--status",
+            "--ready",
+            "--blocked",
+            "--assignee",
+            "--tag",
+            "--type",
+            "--sort",
+            "--limit",
+            "--jsonl",
+        ]:
             assert flag in result.stdout, f"Flag '{flag}' missing from ls help"
 
 

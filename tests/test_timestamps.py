@@ -12,7 +12,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def run_tq(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_tq(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
@@ -22,6 +24,7 @@ def run_tq(*args: str, env: dict[str, str] | None = None) -> subprocess.Complete
         text=True,
         env=run_env,
     )
+
 
 NEW_FMT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z$")
 LEGACY_TS = "2026-04-29T12:48:50.906383+00:00"
@@ -90,7 +93,9 @@ class TestTimestampFormatEndToEnd:
         result = run_tq("create", "Hello", env={"TICKETS_DIR": str(td)})
         ticket_id = result.stdout.strip()
         content = _read_ticket_file(td, ticket_id)
-        created_line = next(l for l in content.splitlines() if l.startswith("created: "))
+        created_line = next(
+            l for l in content.splitlines() if l.startswith("created: ")
+        )
         ts = created_line.split("created: ", 1)[1]
         assert NEW_FMT_RE.match(ts), ts
 
@@ -139,9 +144,7 @@ class TestTimestampFormatEndToEnd:
     def test_editing_legacy_ticket_preserves_created(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         self._write_legacy_ticket(td, "leg-0003")
-        result = run_tq(
-            "edit", "leg-0003", "-p", "1", env={"TICKETS_DIR": str(td)}
-        )
+        result = run_tq("edit", "leg-0003", "-p", "1", env={"TICKETS_DIR": str(td)})
         assert result.returncode == 0, result.stderr
         content = (td / "leg-0003.md").read_text()
         assert f"created: {LEGACY_TS}" in content

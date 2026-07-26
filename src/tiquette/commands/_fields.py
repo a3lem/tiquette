@@ -12,7 +12,13 @@ from tiquette.store import UNSET_TARGETS, FieldChanges
 
 VALID_TYPES = ("bug", "feature", "task", "epic", "chore")
 
-__all__ = ("UNSET_TARGETS", "VALID_TYPES", "add_create_flags", "add_edit_flags", "namespace_to_field_changes")
+__all__ = (
+    "UNSET_TARGETS",
+    "VALID_TYPES",
+    "add_create_flags",
+    "add_edit_flags",
+    "namespace_to_field_changes",
+)
 
 
 # [AI]

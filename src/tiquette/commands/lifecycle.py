@@ -51,9 +51,17 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     #   Each subparser carries its target Status in set_defaults so _handle_status
     #   dispatches on the Status enum, not on the subcommand name.
     for name, helptext, target in [
-        ("start", "Set status to in_progress (rejects if already in_progress)", Status.IN_PROGRESS),
+        (
+            "start",
+            "Set status to in_progress (rejects if already in_progress)",
+            Status.IN_PROGRESS,
+        ),
         ("close", "Set status to closed (rejects if already closed)", Status.CLOSED),
-        ("cancel", "Set status to canceled (rejects if already canceled)", Status.CANCELED),
+        (
+            "cancel",
+            "Set status to canceled (rejects if already canceled)",
+            Status.CANCELED,
+        ),
         ("reopen", "Set status to open (rejects if already open)", Status.OPEN),
     ]:
         p = subparsers.add_parser(name, help=helptext)

@@ -1,6 +1,7 @@
 """Tests for `tq edit` -- the consolidated post-creation mutation surface.
 # spec: ticket-edit
 """
+
 from __future__ import annotations
 
 import os
@@ -12,7 +13,9 @@ import pytest
 from tiquette.store import Ticket, read_ticket, write_ticket
 
 
-def run_tq(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_tq(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
@@ -46,6 +49,7 @@ def _content(td: Path, tid: str) -> str:
 # Requirement: Edit command
 # ---------------------------------------------------------------------------
 
+
 class TestEditCommand:
     """tq edit <id> [field-options] is the single mutation surface.
     # spec: ticket-edit requirement=edit-command
@@ -64,8 +68,14 @@ class TestEditCommand:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-001", title="Fixture", priority=2, assignee="Alice"))
         result = run_tq(
-            "edit", "edit-001",
-            "-p", "0", "-A", "Bob", "--tag", "urgent",
+            "edit",
+            "edit-001",
+            "-p",
+            "0",
+            "-A",
+            "Bob",
+            "--tag",
+            "urgent",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -103,6 +113,7 @@ class TestEditCommand:
 # Requirement: Rename via --title
 # ---------------------------------------------------------------------------
 
+
 class TestTitle:
     """--title renames the ticket title while keeping the id.
     # spec: ticket-edit requirement=rename-via---title
@@ -112,7 +123,9 @@ class TestTitle:
     def test_rename_changes_title(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-002", title="Old title"))
-        result = run_tq("edit", "edit-002", "--title", "New title", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-002", "--title", "New title", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         t = _read(td, "edit-002")
         assert t.title == "New title"
@@ -130,6 +143,7 @@ class TestTitle:
 # Requirement: Description replace via --description
 # ---------------------------------------------------------------------------
 
+
 class TestDescription:
     """--description replaces the body; last value wins on repetition.
     # spec: ticket-edit requirement=description-replace-via---description
@@ -139,7 +153,9 @@ class TestDescription:
     def test_replace_description(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-003", title="Fixture", description="old body"))
-        result = run_tq("edit", "edit-003", "-d", "new body", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-003", "-d", "new body", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         content = _content(td, "edit-003")
         assert "new body" in content
@@ -150,7 +166,12 @@ class TestDescription:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-003", title="Fixture"))
         result = run_tq(
-            "edit", "edit-003", "-d", "first", "-d", "second",
+            "edit",
+            "edit-003",
+            "-d",
+            "first",
+            "-d",
+            "second",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -163,6 +184,7 @@ class TestDescription:
 # Requirement: Notes append via --note
 # ---------------------------------------------------------------------------
 
+
 class TestNotes:
     """--note appends a timestamped note; all notes in one call share a timestamp.
     # spec: ticket-edit requirement=notes-append-via---note
@@ -171,9 +193,12 @@ class TestNotes:
     # spec: ticket-edit requirement=notes-append-via---note scenario=single-note
     def test_single_note_appended(self, tmp_path: Path) -> None:
         import re
+
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-004", title="Fixture"))
-        result = run_tq("edit", "edit-004", "--note", "kickoff", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-004", "--note", "kickoff", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         content = _content(td, "edit-004")
         assert "## Notes" in content
@@ -184,10 +209,16 @@ class TestNotes:
     # spec: ticket-edit requirement=notes-append-via---note scenario=multiple-notes-share-a-timestamp
     def test_multiple_notes_share_timestamp(self, tmp_path: Path) -> None:
         import re
+
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-004", title="Fixture"))
         result = run_tq(
-            "edit", "edit-004", "--note", "first", "--note", "second",
+            "edit",
+            "edit-004",
+            "--note",
+            "first",
+            "--note",
+            "second",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -197,14 +228,23 @@ class TestNotes:
         # Both notes appear; extract timestamps to verify they share one
         timestamps = re.findall(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z", content)
         assert len(timestamps) >= 2
-        assert len(set(timestamps)) == 1, f"Expected one shared timestamp, got {set(timestamps)}"
+        assert len(set(timestamps)) == 1, (
+            f"Expected one shared timestamp, got {set(timestamps)}"
+        )
 
     # spec: ticket-edit requirement=notes-append-via---note scenario=multiple-notes-share-a-timestamp
     def test_multiple_notes_appear_in_order(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-004", title="Fixture"))
-        run_tq("edit", "edit-004", "--note", "first", "--note", "second",
-               env={"TICKETS_DIR": str(td)})
+        run_tq(
+            "edit",
+            "edit-004",
+            "--note",
+            "first",
+            "--note",
+            "second",
+            env={"TICKETS_DIR": str(td)},
+        )
         content = _content(td, "edit-004")
         assert content.index("first") < content.index("second")
 
@@ -212,6 +252,7 @@ class TestNotes:
 # ---------------------------------------------------------------------------
 # Requirement: Tag add/remove
 # ---------------------------------------------------------------------------
+
 
 class TestTagAddRemove:
     """--tag adds, --untag removes; both idempotent and repeatable.
@@ -223,7 +264,12 @@ class TestTagAddRemove:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-005", title="Fixture", tags=["stale", "backend"]))
         result = run_tq(
-            "edit", "edit-005", "--tag", "urgent", "--untag", "stale",
+            "edit",
+            "edit-005",
+            "--tag",
+            "urgent",
+            "--untag",
+            "stale",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -236,7 +282,9 @@ class TestTagAddRemove:
     def test_readding_tag_is_noop(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-005", title="Fixture", tags=["urgent"]))
-        result = run_tq("edit", "edit-005", "--tag", "urgent", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-005", "--tag", "urgent", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         t = _read(td, "edit-005")
         assert t.tags.count("urgent") == 1
@@ -245,7 +293,9 @@ class TestTagAddRemove:
     def test_removing_absent_tag_is_noop(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-005", title="Fixture", tags=["backend"]))
-        result = run_tq("edit", "edit-005", "--untag", "nothere", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-005", "--untag", "nothere", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         t = _read(td, "edit-005")
         assert "backend" in t.tags
@@ -255,7 +305,12 @@ class TestTagAddRemove:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-005", title="Fixture", tags=[]))
         result = run_tq(
-            "edit", "edit-005", "--tag", "alpha", "--tag", "beta",
+            "edit",
+            "edit-005",
+            "--tag",
+            "alpha",
+            "--tag",
+            "beta",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -267,6 +322,7 @@ class TestTagAddRemove:
 # ---------------------------------------------------------------------------
 # Requirement: Dependency add/remove
 # ---------------------------------------------------------------------------
+
 
 class TestDepAddRemove:
     """--dep adds, --undep removes; cycles rejected.
@@ -280,7 +336,12 @@ class TestDepAddRemove:
         _write(td, Ticket(id="edit-006a", title="Dep A"))
         _write(td, Ticket(id="edit-006b", title="Dep B"))
         result = run_tq(
-            "edit", "edit-006", "--dep", "edit-006b", "--undep", "edit-006a",
+            "edit",
+            "edit-006",
+            "--dep",
+            "edit-006b",
+            "--undep",
+            "edit-006a",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -293,17 +354,25 @@ class TestDepAddRemove:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-006", title="Fixture", deps=["edit-006b"]))
         _write(td, Ticket(id="edit-006b", title="Dep B"))
-        result = run_tq("edit", "edit-006b", "--dep", "edit-006", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-006b", "--dep", "edit-006", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         stderr_lower = result.stderr.lower()
-        assert "cycle" in stderr_lower or "circular" in stderr_lower or "loop" in stderr_lower
+        assert (
+            "cycle" in stderr_lower
+            or "circular" in stderr_lower
+            or "loop" in stderr_lower
+        )
 
     # spec: ticket-edit requirement=dependency-add/remove
     def test_removing_absent_dep_is_noop(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-006", title="Fixture", deps=["edit-006a"]))
         _write(td, Ticket(id="edit-006a", title="Dep A"))
-        result = run_tq("edit", "edit-006", "--undep", "nothere", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-006", "--undep", "nothere", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         t = _read(td, "edit-006")
         assert "edit-006a" in t.deps
@@ -312,6 +381,7 @@ class TestDepAddRemove:
 # ---------------------------------------------------------------------------
 # Requirement: Link add/remove
 # ---------------------------------------------------------------------------
+
 
 class TestLinkAddRemove:
     """--link adds symmetrically, --unlink removes symmetrically.
@@ -323,7 +393,9 @@ class TestLinkAddRemove:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-007", title="A"))
         _write(td, Ticket(id="edit-007b", title="B"))
-        result = run_tq("edit", "edit-007", "--link", "edit-007b", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-007", "--link", "edit-007b", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert "edit-007b" in _read(td, "edit-007").links
         assert "edit-007" in _read(td, "edit-007b").links
@@ -333,7 +405,9 @@ class TestLinkAddRemove:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-007", title="A", links=["edit-007b"]))
         _write(td, Ticket(id="edit-007b", title="B", links=["edit-007"]))
-        result = run_tq("edit", "edit-007", "--unlink", "edit-007b", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-007", "--unlink", "edit-007b", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert "edit-007b" not in _read(td, "edit-007").links
         assert "edit-007" not in _read(td, "edit-007b").links
@@ -345,7 +419,12 @@ class TestLinkAddRemove:
         _write(td, Ticket(id="edit-007b", title="B"))
         _write(td, Ticket(id="edit-007c", title="C"))
         result = run_tq(
-            "edit", "edit-007", "--link", "edit-007b", "--link", "edit-007c",
+            "edit",
+            "edit-007",
+            "--link",
+            "edit-007b",
+            "--link",
+            "edit-007c",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -358,6 +437,7 @@ class TestLinkAddRemove:
 # Requirement: Parent set via --parent
 # ---------------------------------------------------------------------------
 
+
 class TestParentSet:
     """--parent sets parent; cycle rejected.
     # spec: ticket-edit requirement=parent-set-via---parent
@@ -369,7 +449,9 @@ class TestParentSet:
         _write(td, Ticket(id="edit-008", title="Child", parent="edit-008a"))
         _write(td, Ticket(id="edit-008a", title="Old parent"))
         _write(td, Ticket(id="edit-008b", title="New parent"))
-        result = run_tq("edit", "edit-008", "--parent", "edit-008b", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-008", "--parent", "edit-008b", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-008").parent == "edit-008b"
 
@@ -378,15 +460,22 @@ class TestParentSet:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-008", title="Parent"))
         _write(td, Ticket(id="edit-008c", title="Child", parent="edit-008"))
-        result = run_tq("edit", "edit-008", "--parent", "edit-008c", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-008", "--parent", "edit-008c", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         stderr_lower = result.stderr.lower()
-        assert "cycle" in stderr_lower or "circular" in stderr_lower or "ancestor" in stderr_lower
+        assert (
+            "cycle" in stderr_lower
+            or "circular" in stderr_lower
+            or "ancestor" in stderr_lower
+        )
 
 
 # ---------------------------------------------------------------------------
 # Requirement: Single-value field clear via --unset
 # ---------------------------------------------------------------------------
+
 
 class TestUnset:
     """--unset clears single-value fields; --unset description is rejected.
@@ -397,7 +486,9 @@ class TestUnset:
     def test_unset_assignee(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture", assignee="Alice"))
-        result = run_tq("edit", "edit-009", "--unset", "assignee", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "assignee", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         t = _read(td, "edit-009")
         assert t.assignee is None
@@ -405,9 +496,16 @@ class TestUnset:
     # spec: ticket-edit requirement=single-value-field-clear-via---unset scenario=clear-multiple-fields-in-one-call
     def test_unset_multiple_fields(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
-        _write(td, Ticket(id="edit-009", title="Fixture", assignee="Alice", xref="gh-1"))
+        _write(
+            td, Ticket(id="edit-009", title="Fixture", assignee="Alice", xref="gh-1")
+        )
         result = run_tq(
-            "edit", "edit-009", "--unset", "assignee", "--unset", "xref",
+            "edit",
+            "edit-009",
+            "--unset",
+            "assignee",
+            "--unset",
+            "xref",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -419,7 +517,9 @@ class TestUnset:
     def test_unset_description_rejected(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture"))
-        result = run_tq("edit", "edit-009", "--unset", "description", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "description", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         assert "invalid choice" in result.stderr.lower()
 
@@ -427,7 +527,9 @@ class TestUnset:
     def test_unset_already_empty_is_noop(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture", assignee=None))
-        result = run_tq("edit", "edit-009", "--unset", "assignee", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "assignee", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-009").assignee is None
 
@@ -436,7 +538,9 @@ class TestUnset:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture", parent="edit-009a"))
         _write(td, Ticket(id="edit-009a", title="Parent"))
-        result = run_tq("edit", "edit-009", "--unset", "parent", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "parent", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-009").parent is None
 
@@ -444,7 +548,9 @@ class TestUnset:
     def test_unset_xref(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture", xref="gh-99"))
-        result = run_tq("edit", "edit-009", "--unset", "xref", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "xref", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-009").xref is None
 
@@ -452,7 +558,9 @@ class TestUnset:
     def test_unset_invalid_field_rejected(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-009", title="Fixture"))
-        result = run_tq("edit", "edit-009", "--unset", "title", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-009", "--unset", "title", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         assert "invalid choice" in result.stderr.lower()
 
@@ -460,6 +568,7 @@ class TestUnset:
 # ---------------------------------------------------------------------------
 # Requirement: Set/unset conflict
 # ---------------------------------------------------------------------------
+
 
 class TestSetUnsetConflict:
     """Setting and unsetting the same field in one call is an error.
@@ -471,7 +580,12 @@ class TestSetUnsetConflict:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-010", title="Fixture", assignee="Original"))
         result = run_tq(
-            "edit", "edit-010", "-A", "Bob", "--unset", "assignee",
+            "edit",
+            "edit-010",
+            "-A",
+            "Bob",
+            "--unset",
+            "assignee",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode != 0
@@ -481,7 +595,12 @@ class TestSetUnsetConflict:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-010", title="Fixture", assignee="Original"))
         result = run_tq(
-            "edit", "edit-010", "-A", "Bob", "--unset", "assignee",
+            "edit",
+            "edit-010",
+            "-A",
+            "Bob",
+            "--unset",
+            "assignee",
             env={"TICKETS_DIR": str(td)},
         )
         assert "assignee" in result.stderr
@@ -491,7 +610,12 @@ class TestSetUnsetConflict:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-010", title="Fixture", assignee="Original"))
         run_tq(
-            "edit", "edit-010", "-A", "Bob", "--unset", "assignee",
+            "edit",
+            "edit-010",
+            "-A",
+            "Bob",
+            "--unset",
+            "assignee",
             env={"TICKETS_DIR": str(td)},
         )
         # ticket must be unchanged
@@ -504,7 +628,12 @@ class TestSetUnsetConflict:
         _write(td, Ticket(id="edit-010", title="Fixture"))
         _write(td, Ticket(id="edit-010p", title="Parent"))
         result = run_tq(
-            "edit", "edit-010", "--parent", "edit-010p", "--unset", "parent",
+            "edit",
+            "edit-010",
+            "--parent",
+            "edit-010p",
+            "--unset",
+            "parent",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode != 0
@@ -515,7 +644,12 @@ class TestSetUnsetConflict:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-010", title="Fixture"))
         result = run_tq(
-            "edit", "edit-010", "--xref", "gh-1", "--unset", "xref",
+            "edit",
+            "edit-010",
+            "--xref",
+            "gh-1",
+            "--unset",
+            "xref",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode != 0
@@ -525,6 +659,7 @@ class TestSetUnsetConflict:
 # ---------------------------------------------------------------------------
 # Requirement: Type and priority via --type / --priority
 # ---------------------------------------------------------------------------
+
 
 class TestTypeAndPriority:
     """--type and --priority set those fields.
@@ -552,7 +687,12 @@ class TestTypeAndPriority:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-011", title="Fixture"))
         result = run_tq(
-            "edit", "edit-011", "--type", "feature", "--priority", "1",
+            "edit",
+            "edit-011",
+            "--type",
+            "feature",
+            "--priority",
+            "1",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode == 0, result.stderr
@@ -565,6 +705,7 @@ class TestTypeAndPriority:
 # Requirement: External reference via --xref
 # ---------------------------------------------------------------------------
 
+
 class TestXref:
     """--xref sets the external reference field.
     # spec: ticket-edit requirement=external-reference-via---xref
@@ -574,7 +715,9 @@ class TestXref:
     def test_set_xref(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-012", title="Fixture"))
-        result = run_tq("edit", "edit-012", "--xref", "gh-42", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-012", "--xref", "gh-42", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-012").xref == "gh-42"
 
@@ -582,7 +725,9 @@ class TestXref:
     def test_clear_xref_via_unset(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-012", title="Fixture", xref="old-ref"))
-        result = run_tq("edit", "edit-012", "--unset", "xref", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "edit-012", "--unset", "xref", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode == 0, result.stderr
         assert _read(td, "edit-012").xref is None
 
@@ -590,6 +735,7 @@ class TestXref:
 # ---------------------------------------------------------------------------
 # Requirement: Atomicity
 # ---------------------------------------------------------------------------
+
 
 class TestAtomicity:
     """All changes apply atomically; a validation failure leaves files unchanged.
@@ -601,7 +747,12 @@ class TestAtomicity:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="edit-013", title="Fixture", priority=2))
         result = run_tq(
-            "edit", "edit-013", "-p", "0", "--dep", "nonexistent",
+            "edit",
+            "edit-013",
+            "-p",
+            "0",
+            "--dep",
+            "nonexistent",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode != 0
@@ -614,7 +765,12 @@ class TestAtomicity:
         _write(td, Ticket(id="edit-013", title="A", deps=["edit-013b"], priority=2))
         _write(td, Ticket(id="edit-013b", title="B"))
         result = run_tq(
-            "edit", "edit-013b", "--dep", "edit-013", "-p", "0",
+            "edit",
+            "edit-013b",
+            "--dep",
+            "edit-013",
+            "-p",
+            "0",
             env={"TICKETS_DIR": str(td)},
         )
         assert result.returncode != 0
@@ -626,6 +782,7 @@ class TestAtomicity:
 # Requirement: Partial ID resolution applies to field-option values
 # spec: id-resolution requirement=id-resolution-across-commands
 # ---------------------------------------------------------------------------
+
 
 class TestPartialIDOnFieldValues:
     """`tq edit` and `tq create` must resolve partial IDs in the *values* of
@@ -673,9 +830,7 @@ class TestPartialIDOnFieldValues:
             Ticket(id="arc-9999", title="Archived target", status="closed"),
             archive_dir,
         )
-        r = run_tq(
-            "edit", "act-0001", "--dep", "9999", env={"TICKETS_DIR": str(td)}
-        )
+        r = run_tq("edit", "act-0001", "--dep", "9999", env={"TICKETS_DIR": str(td)})
         assert r.returncode != 0
         assert "ticket '9999' not found" in r.stderr
 
@@ -700,7 +855,10 @@ class TestPartialIDOnFieldValues:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="part-kkkk", title="Target"))
         r = run_tq(
-            "create", "New ticket", "--dep", "kkkk",
+            "create",
+            "New ticket",
+            "--dep",
+            "kkkk",
             env={"TICKETS_DIR": str(td)},
         )
         assert r.returncode == 0, r.stderr
@@ -711,7 +869,10 @@ class TestPartialIDOnFieldValues:
         td = _make_dir(tmp_path)
         _write(td, Ticket(id="part-llll", title="Parent"))
         r = run_tq(
-            "create", "Child ticket", "--parent", "llll",
+            "create",
+            "Child ticket",
+            "--parent",
+            "llll",
             env={"TICKETS_DIR": str(td)},
         )
         assert r.returncode == 0, r.stderr
@@ -727,7 +888,9 @@ class TestPartialIDOnFieldValues:
 
     def test_edit_undep_ambiguous_partial_errors(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
-        _write(td, Ticket(id="part-aa11", title="Subject", deps=["part-aa22", "part-aa33"]))
+        _write(
+            td, Ticket(id="part-aa11", title="Subject", deps=["part-aa22", "part-aa33"])
+        )
         _write(td, Ticket(id="part-aa22", title="Dep A"))
         _write(td, Ticket(id="part-aa33", title="Dep B"))
         # "aa" matches both part-aa22 and part-aa33
@@ -737,7 +900,10 @@ class TestPartialIDOnFieldValues:
 
     def test_edit_unlink_ambiguous_partial_errors(self, tmp_path: Path) -> None:
         td = _make_dir(tmp_path)
-        _write(td, Ticket(id="part-bb11", title="Subject", links=["part-bb22", "part-bb33"]))
+        _write(
+            td,
+            Ticket(id="part-bb11", title="Subject", links=["part-bb22", "part-bb33"]),
+        )
         _write(td, Ticket(id="part-bb22", title="Link A", links=["part-bb11"]))
         _write(td, Ticket(id="part-bb33", title="Link B", links=["part-bb11"]))
         # "bb" matches both part-bb22 and part-bb33

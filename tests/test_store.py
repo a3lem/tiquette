@@ -563,7 +563,9 @@ class TestResolveIdIncludingArchive:
         archive_dir = tickets_dir / "archive"
         archive_dir.mkdir()
         write_ticket(Ticket(id="abc-1234", title="active"), tickets_dir)
-        write_ticket(Ticket(id="abc-5678", title="archived", status="closed"), archive_dir)
+        write_ticket(
+            Ticket(id="abc-5678", title="archived", status="closed"), archive_dir
+        )
         with pytest.raises(AmbiguousIDError, match="ambiguous ID 'abc'"):
             resolve_id_including_archive("abc", tickets_dir)
 
@@ -711,7 +713,9 @@ class TestParseFrontmatter:
             "severity: high\n"
             "---\n# Bad ticket\n"
         )
-        with pytest.raises(TicketParseError, match="unknown frontmatter key 'severity'"):
+        with pytest.raises(
+            TicketParseError, match="unknown frontmatter key 'severity'"
+        ):
             read_ticket("bad-0001", tickets_dir)
 
     def test_malformed_line_raises(self, tmp_path: Path) -> None:

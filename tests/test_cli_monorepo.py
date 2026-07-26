@@ -11,6 +11,7 @@ directory inside it, so walk-up and `-r` discovery operate on the tree. The
 `tq` console script is invoked directly (its shebang points at the project
 venv) so `cwd` is free to be the temp tree rather than the project root.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,16 @@ _PROJECT = Path(__file__).resolve().parents[1]
 
 def _tq_bin() -> str:
     out = subprocess.run(
-        ["uv", "run", "python", "-c",
-         "import sys, os; print(os.path.join(os.path.dirname(sys.executable), 'tq'))"],
-        capture_output=True, text=True, cwd=str(_PROJECT),
+        [
+            "uv",
+            "run",
+            "python",
+            "-c",
+            "import sys, os; print(os.path.join(os.path.dirname(sys.executable), 'tq'))",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(_PROJECT),
     )
     return out.stdout.strip()
 
@@ -36,7 +44,9 @@ def _tq_bin() -> str:
 TQ = _tq_bin()
 
 
-def run(*args: str, cwd: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run(
+    *args: str, cwd: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Invoke tq in `cwd` with TICKETS_DIR removed (unless supplied in `env`)."""
     run_env = os.environ.copy()
     run_env.pop("TICKETS_DIR", None)
@@ -91,8 +101,9 @@ class TestDirTargeting:
         other.mkdir(parents=True)
         oth = _create(monorepo, "other", "Other")  # writes other/.tickets
         api = _create(monorepo, "packages/api", "API")
-        r = run("--dir", "packages/api", "ls", cwd=monorepo,
-                env={"TICKETS_DIR": str(other)})
+        r = run(
+            "--dir", "packages/api", "ls", cwd=monorepo, env={"TICKETS_DIR": str(other)}
+        )
         assert api in r.stdout
         assert oth not in r.stdout
 

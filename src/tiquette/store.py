@@ -40,7 +40,19 @@ UNSET_TARGETS: tuple[str, ...] = ("parent", "xref", "assignee")
 
 # -- All frontmatter keys that read_ticket recognises. Any other key is an error. --
 _KNOWN_FRONTMATTER_KEYS: frozenset[str] = frozenset(
-    {"id", "status", "type", "priority", "assignee", "deps", "links", "parent", "tags", "xref", "created"}
+    {
+        "id",
+        "status",
+        "type",
+        "priority",
+        "assignee",
+        "deps",
+        "links",
+        "parent",
+        "tags",
+        "xref",
+        "created",
+    }
 )
 
 
@@ -217,8 +229,17 @@ def resolve_store(explicit_dir: str | None = None, *, must_exist: bool = True) -
 #   walk so a monorepo's node_modules/.git don't get scanned (both a
 #   correctness and a performance concern).
 _DISCOVERY_SKIP_DIRS: frozenset[str] = frozenset(
-    {".git", "node_modules", ".venv", "__pycache__", ".tox", "dist", "build",
-     ".mypy_cache", ".ruff_cache"}
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        "__pycache__",
+        ".tox",
+        "dist",
+        "build",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
 )
 
 
@@ -363,7 +384,9 @@ def _parse_yaml_value(key: str, raw: str) -> _FrontmatterValue:
     return raw
 
 
-def _parse_frontmatter(text: str, file_path: Path | None = None) -> dict[str, _FrontmatterValue]:
+def _parse_frontmatter(
+    text: str, file_path: Path | None = None
+) -> dict[str, _FrontmatterValue]:
     """Parse YAML frontmatter from between --- delimiters.
 
     Raises TicketParseError for malformed lines or unknown keys.
@@ -509,7 +532,7 @@ def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, st
     for i, line in enumerate(body_lines):
         if line.strip() == "## Description":
             desc_marker_idx = i
-            desc_text = "\n".join(body_lines[i + 1:]).strip()
+            desc_text = "\n".join(body_lines[i + 1 :]).strip()
             if desc_text:
                 description = desc_text
             break
@@ -521,7 +544,7 @@ def _read_ticket_and_body(ticket_id: str, tickets_dir: Path) -> tuple[Ticket, st
     # `tq autofix`'s prefix-rename. On the next write the body normalises into
     # the standard `## Description\n\n<content>` layout.
     if description is None and desc_marker_idx == -1 and title_idx != -1:
-        tail = "\n".join(body_lines[title_idx + 1:]).strip()
+        tail = "\n".join(body_lines[title_idx + 1 :]).strip()
         if tail:
             description = tail
 

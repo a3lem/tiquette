@@ -5,6 +5,7 @@ Removed verbs (dep, undep, nest, unnest, link, unlink) are gone.
 Only cycle detection survives, now triggered via `tq edit --dep`,
 `tq edit --parent`, and `tq create --dep`.
 """
+
 from __future__ import annotations
 
 import os
@@ -14,7 +15,9 @@ from pathlib import Path
 from tiquette.store import Ticket, write_ticket
 
 
-def run_tq(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_tq(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
@@ -51,7 +54,9 @@ class TestCycleDetection:
         td = tmp_path / ".tickets"
         _make_ticket(td, "task-0001", deps=["task-0002"])
         _make_ticket(td, "task-0002")
-        result = run_tq("edit", "task-0002", "--dep", "task-0001", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "task-0002", "--dep", "task-0001", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         assert "cycle" in result.stderr.lower()
 
@@ -61,7 +66,9 @@ class TestCycleDetection:
         _make_ticket(td, "task-0001", deps=["task-0002"])
         _make_ticket(td, "task-0002", deps=["task-0003"])
         _make_ticket(td, "task-0003")
-        result = run_tq("edit", "task-0003", "--dep", "task-0001", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "task-0003", "--dep", "task-0001", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         assert "cycle" in result.stderr.lower()
 
@@ -70,7 +77,8 @@ class TestCycleDetection:
         td = tmp_path / ".tickets"
         _make_ticket(td, "par-0002", parent="par-0001")
         _make_ticket(td, "par-0001")
-        result = run_tq("edit", "par-0001", "--parent", "par-0002", env={"TICKETS_DIR": str(td)})
+        result = run_tq(
+            "edit", "par-0001", "--parent", "par-0002", env={"TICKETS_DIR": str(td)}
+        )
         assert result.returncode != 0
         assert "cycle" in result.stderr.lower()
-

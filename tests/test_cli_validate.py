@@ -1,6 +1,7 @@
 """Tests for the validate command.
 # spec: ticket-validate
 """
+
 from __future__ import annotations
 
 import os
@@ -12,14 +13,17 @@ from tiquette.store import Ticket, write_ticket
 
 
 def run_tq_env(
-    *args: str, env: dict[str, str] | None = None,
+    *args: str,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
     return subprocess.run(
         ["uv", "run", "tq", *args],
-        capture_output=True, text=True, env=run_env,
+        capture_output=True,
+        text=True,
+        env=run_env,
     )
 
 
@@ -86,7 +90,10 @@ class TestOutputFormatViolation:
         td.mkdir()
         _make_ticket(td, "proj-a001", deps=["proj-gone"])
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: error: depends on non-existent ticket "proj-gone"' in result.stderr
+        assert (
+            'proj-a001: error: depends on non-existent ticket "proj-gone"'
+            in result.stderr
+        )
 
 
 # spec: ticket-validate requirement=output-format scenario=warning-output
@@ -99,7 +106,10 @@ class TestOutputFormatWarning:
         _make_ticket(td, "proj-a001", deps=["proj-old1"])
         _make_ticket(archive, "proj-old1")
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: warning: depends on archived ticket "proj-old1"' in result.stderr
+        assert (
+            'proj-a001: warning: depends on archived ticket "proj-old1"'
+            in result.stderr
+        )
 
 
 # ── Requirement: Summary line ──────────────────────────────
@@ -163,7 +173,10 @@ class TestMissingDep:
         td.mkdir()
         _make_ticket(td, "proj-a001", deps=["proj-gone"])
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: error: depends on non-existent ticket "proj-gone"' in result.stderr
+        assert (
+            'proj-a001: error: depends on non-existent ticket "proj-gone"'
+            in result.stderr
+        )
 
 
 # spec: ticket-validate requirement=dependency-existence scenario=multiple-missing-dependencies
@@ -187,7 +200,10 @@ class TestDepOnArchived:
         _make_ticket(td, "proj-a001", deps=["proj-old1"])
         _make_ticket(archive, "proj-old1")
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: warning: depends on archived ticket "proj-old1"' in result.stderr
+        assert (
+            'proj-a001: warning: depends on archived ticket "proj-old1"'
+            in result.stderr
+        )
 
 
 # ── Requirement: Parent existence ──────────────────────────
@@ -248,7 +264,10 @@ class TestMissingLink:
         td.mkdir()
         _make_ticket(td, "proj-a001", links=["proj-gone"])
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: error: links to non-existent ticket "proj-gone"' in result.stderr
+        assert (
+            'proj-a001: error: links to non-existent ticket "proj-gone"'
+            in result.stderr
+        )
 
 
 # spec: ticket-validate requirement=link-existence scenario=link-to-archived-ticket
@@ -261,7 +280,9 @@ class TestLinkToArchived:
         _make_ticket(td, "proj-a001", links=["proj-old1"])
         _make_ticket(archive, "proj-old1")
         result = run_tq_env("validate", env={"TICKETS_DIR": str(td)})
-        assert 'proj-a001: warning: links to archived ticket "proj-old1"' in result.stderr
+        assert (
+            'proj-a001: warning: links to archived ticket "proj-old1"' in result.stderr
+        )
 
 
 # ── Requirement: Scope ─────────────────────────────────────

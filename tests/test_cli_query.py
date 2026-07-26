@@ -1,6 +1,7 @@
 """Tests for query command argument parsing and behavior.
 # spec: ticket-query
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,9 @@ def run_tq(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def run_tq_env(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_tq_env(
+    *args: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run tq with custom environment (for TICKETS_DIR isolation)."""
     run_env = os.environ.copy()
     if env:
@@ -278,11 +281,17 @@ class TestShowBehavior:
     def test_show_displays_all_frontmatter_fields(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(
-            id="show-002", title="Full ticket",
-            deps=["dep-a"], links=["link-a"],
-            type="bug", priority=1,
-        ), td)
+        write_ticket(
+            Ticket(
+                id="show-002",
+                title="Full ticket",
+                deps=["dep-a"],
+                links=["link-a"],
+                type="bug",
+                priority=1,
+            ),
+            td,
+        )
         r = run_tq_env("show", "show-002", env=_make_env(td))
         assert r.returncode == 0
         for field in ("status:", "deps:", "links:", "type:", "priority:"):
@@ -310,7 +319,9 @@ class TestShowBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="show-007", title="Dependency"), td)
-        write_ticket(Ticket(id="show-008", title="Depends on 007", deps=["show-007"]), td)
+        write_ticket(
+            Ticket(id="show-008", title="Depends on 007", deps=["show-007"]), td
+        )
         r = run_tq_env("show", "show-007", env=_make_env(td))
         assert "## Blocking" in r.stdout
         assert "show-008" in r.stdout
@@ -328,7 +339,9 @@ class TestShowBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="show-011", title="Linked", links=["show-012"]), td)
-        write_ticket(Ticket(id="show-012", title="Other linked", links=["show-011"]), td)
+        write_ticket(
+            Ticket(id="show-012", title="Other linked", links=["show-011"]), td
+        )
         r = run_tq_env("show", "show-011", env=_make_env(td))
         assert "## Linked" in r.stdout
         assert "show-012" in r.stdout
@@ -351,11 +364,17 @@ class TestShowBehavior:
     def test_show_as_json(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(
-            id="show-json", title="JSON test",
-            status="open", type="task", priority=2,
-            description="Some body text",
-        ), td)
+        write_ticket(
+            Ticket(
+                id="show-json",
+                title="JSON test",
+                status="open",
+                type="task",
+                priority=2,
+                description="Some body text",
+            ),
+            td,
+        )
         r = run_tq_env("show", "show-json", "--json", env=_make_env(td))
         assert r.returncode == 0
         data = json.loads(r.stdout)
@@ -401,7 +420,9 @@ class TestShowBehavior:
         archive_dir = td / "archive"
         archive_dir.mkdir()
         write_ticket(
-            Ticket(id="show-012", title="Dependent", status="closed", deps=["show-013"]),
+            Ticket(
+                id="show-012", title="Dependent", status="closed", deps=["show-013"]
+            ),
             archive_dir,
         )
         write_ticket(
@@ -540,7 +561,9 @@ class TestLsBehavior:
     def test_ready_includes_tickets_with_all_deps_closed(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="ls-rc-1", title="All closed deps", deps=["ls-rc-2"]), td)
+        write_ticket(
+            Ticket(id="ls-rc-1", title="All closed deps", deps=["ls-rc-2"]), td
+        )
         write_ticket(Ticket(id="ls-rc-2", title="Closed dep", status="closed"), td)
         r = run_tq_env("ls", "--ready", env=_make_env(td))
         assert "ls-rc-1" in r.stdout
@@ -558,7 +581,12 @@ class TestLsBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="ls-rp-1", title="Parent"), td)
-        write_ticket(Ticket(id="ls-rp-child", title="Open child", parent="ls-rp-1", status="open"), td)
+        write_ticket(
+            Ticket(
+                id="ls-rp-child", title="Open child", parent="ls-rp-1", status="open"
+            ),
+            td,
+        )
         r = run_tq_env("ls", "--ready", env=_make_env(td))
         assert "ls-rp-1" not in r.stdout
 
@@ -589,14 +617,20 @@ class TestLsBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="ls-bc-1", title="Parent"), td)
-        write_ticket(Ticket(id="ls-bc-child", title="Child", parent="ls-bc-1", status="open"), td)
+        write_ticket(
+            Ticket(id="ls-bc-child", title="Child", parent="ls-bc-1", status="open"), td
+        )
         r = run_tq_env("ls", "--blocked", env=_make_env(td))
         assert "ls-bc-1" in r.stdout
 
-    def test_blocked_excludes_tickets_with_all_deps_closed(self, tmp_path: Path) -> None:
+    def test_blocked_excludes_tickets_with_all_deps_closed(
+        self, tmp_path: Path
+    ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="ls-be-1", title="All deps closed", deps=["ls-be-2"]), td)
+        write_ticket(
+            Ticket(id="ls-be-1", title="All deps closed", deps=["ls-be-2"]), td
+        )
         write_ticket(Ticket(id="ls-be-2", title="Closed", status="closed"), td)
         r = run_tq_env("ls", "--blocked", env=_make_env(td))
         assert "ls-be-1" not in r.stdout
@@ -644,11 +678,17 @@ class TestLsBehavior:
     def test_jsonl_output(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(
-            id="ls-jsonl", title="JSONL test",
-            deps=["dep1"], links=["link1"],
-            type="bug", priority=1,
-        ), td)
+        write_ticket(
+            Ticket(
+                id="ls-jsonl",
+                title="JSONL test",
+                deps=["dep1"],
+                links=["link1"],
+                type="bug",
+                priority=1,
+            ),
+            td,
+        )
         r = run_tq_env("ls", "--jsonl", env=_make_env(td))
         lines = [l for l in r.stdout.strip().splitlines() if l.strip()]
         assert len(lines) >= 1
@@ -687,6 +727,7 @@ class TestLsBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         import time
+
         write_ticket(Ticket(id="ls-mt-old", title="Old"), td)
         time.sleep(0.05)
         write_ticket(Ticket(id="ls-mt-new", title="New"), td)
@@ -699,8 +740,12 @@ class TestLsBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="tree-p", title="Parent", priority=2), td)
-        write_ticket(Ticket(id="tree-c1", title="Child 1", parent="tree-p", priority=1), td)
-        write_ticket(Ticket(id="tree-c2", title="Child 2", parent="tree-p", priority=2), td)
+        write_ticket(
+            Ticket(id="tree-c1", title="Child 1", parent="tree-p", priority=1), td
+        )
+        write_ticket(
+            Ticket(id="tree-c2", title="Child 2", parent="tree-p", priority=2), td
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "├──" in r.stdout or "└──" in r.stdout
 
@@ -717,7 +762,11 @@ class TestLsBehavior:
         assert len(gc_line) == 1
         # Should have more leading space than child
         c_line = [l for l in lines if "nest-c1" in l][0]
-        assert len(gc_line[0]) - len(gc_line[0].lstrip()) > len(c_line) - len(c_line.lstrip()) or "│" in gc_line[0]
+        assert (
+            len(gc_line[0]) - len(gc_line[0].lstrip())
+            > len(c_line) - len(c_line.lstrip())
+            or "│" in gc_line[0]
+        )
 
     def test_tree_orphan_at_root(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
@@ -730,23 +779,35 @@ class TestLsBehavior:
         orphan_line = [l for l in lines if "tree-orphan" in l]
         assert len(orphan_line) == 1
         # Orphan should be at root level (no tree prefix)
-        assert not orphan_line[0].startswith("├") and not orphan_line[0].startswith("└") and not orphan_line[0].startswith("│")
+        assert (
+            not orphan_line[0].startswith("├")
+            and not orphan_line[0].startswith("└")
+            and not orphan_line[0].startswith("│")
+        )
 
-    def test_tree_parent_shown_as_context_in_filtered_view(self, tmp_path: Path) -> None:
+    def test_tree_parent_shown_as_context_in_filtered_view(
+        self, tmp_path: Path
+    ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="ctx-p", title="Parent", assignee="Alice"), td)
-        write_ticket(Ticket(id="ctx-c", title="Child", parent="ctx-p", assignee="Bob"), td)
+        write_ticket(
+            Ticket(id="ctx-c", title="Child", parent="ctx-p", assignee="Bob"), td
+        )
         r = run_tq_env("ls", "--assignee", "Bob", env=_make_env(td))
         # Parent should appear as context heading
         assert "ctx-p" in r.stdout
         assert "ctx-c" in r.stdout
 
-    def test_tree_parent_hidden_when_all_children_filtered_out(self, tmp_path: Path) -> None:
+    def test_tree_parent_hidden_when_all_children_filtered_out(
+        self, tmp_path: Path
+    ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="hid-p", title="Parent", assignee="Alice"), td)
-        write_ticket(Ticket(id="hid-c", title="Child", parent="hid-p", assignee="Alice"), td)
+        write_ticket(
+            Ticket(id="hid-c", title="Child", parent="hid-p", assignee="Alice"), td
+        )
         r = run_tq_env("ls", "--assignee", "Bob", env=_make_env(td))
         assert "hid-p" not in r.stdout
         assert "hid-c" not in r.stdout
@@ -765,13 +826,16 @@ class TestLsArchivedAndAll:
         (td / "archive").mkdir()
         write_ticket(Ticket(id="act-001", title="Active"), td)
         write_ticket(
-            Ticket(id="arc-001", title="Archived closed",
-                   status="closed", tags=["ui"]),
+            Ticket(id="arc-001", title="Archived closed", status="closed", tags=["ui"]),
             td / "archive",
         )
         write_ticket(
-            Ticket(id="arc-002", title="Archived canceled",
-                   status="canceled", tags=["backend"]),
+            Ticket(
+                id="arc-002",
+                title="Archived canceled",
+                status="canceled",
+                tags=["backend"],
+            ),
             td / "archive",
         )
         return td
@@ -828,7 +892,9 @@ class TestLsArchivedAndAll:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(Ticket(id="done-001", title="Active closed", status="closed"), td)
-        write_ticket(Ticket(id="done-003", title="Active canceled", status="canceled"), td)
+        write_ticket(
+            Ticket(id="done-003", title="Active canceled", status="canceled"), td
+        )
         write_ticket(
             Ticket(id="done-002", title="Archived closed", status="closed"),
             td / "archive",
@@ -860,7 +926,9 @@ class TestLsArchivedAndAll:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(Ticket(id="done-001", title="Active closed", status="closed"), td)
-        write_ticket(Ticket(id="done-002", title="Active canceled", status="canceled"), td)
+        write_ticket(
+            Ticket(id="done-002", title="Active canceled", status="canceled"), td
+        )
         write_ticket(
             Ticket(id="done-003", title="Archived closed", status="closed"),
             td / "archive",
@@ -876,7 +944,9 @@ class TestLsArchivedAndAll:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(Ticket(id="done-001", title="Active closed", status="closed"), td)
-        write_ticket(Ticket(id="done-002", title="Active canceled", status="canceled"), td)
+        write_ticket(
+            Ticket(id="done-002", title="Active canceled", status="canceled"), td
+        )
         write_ticket(
             Ticket(id="done-003", title="Archived canceled", status="canceled"),
             td / "archive",
@@ -894,7 +964,12 @@ class TestLsLineFormat:
     def test_default_priority_and_type_hidden(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-001", title="Fix login", priority=2, type="task", status="open"), td)
+        write_ticket(
+            Ticket(
+                id="fmt-001", title="Fix login", priority=2, type="task", status="open"
+            ),
+            td,
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-001 - [ ] Fix login" in r.stdout
 
@@ -902,7 +977,12 @@ class TestLsLineFormat:
     def test_non_default_priority_shown(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-002", title="Fix login", priority=1, type="task", status="open"), td)
+        write_ticket(
+            Ticket(
+                id="fmt-002", title="Fix login", priority=1, type="task", status="open"
+            ),
+            td,
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-002 [P1] - [ ] Fix login" in r.stdout
 
@@ -910,7 +990,16 @@ class TestLsLineFormat:
     def test_non_default_type_shown(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-003", title="Add export", priority=2, type="feature", status="open"), td)
+        write_ticket(
+            Ticket(
+                id="fmt-003",
+                title="Add export",
+                priority=2,
+                type="feature",
+                status="open",
+            ),
+            td,
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-003 [feature] - [ ] Add export" in r.stdout
 
@@ -918,7 +1007,12 @@ class TestLsLineFormat:
     def test_both_non_default_priority_and_type(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-004", title="Refactor", priority=3, type="epic", status="open"), td)
+        write_ticket(
+            Ticket(
+                id="fmt-004", title="Refactor", priority=3, type="epic", status="open"
+            ),
+            td,
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-004 [P3][epic] - [ ] Refactor" in r.stdout
 
@@ -926,7 +1020,16 @@ class TestLsLineFormat:
     def test_in_progress_checkbox(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-005", title="Working", priority=2, type="task", status="in_progress"), td)
+        write_ticket(
+            Ticket(
+                id="fmt-005",
+                title="Working",
+                priority=2,
+                type="task",
+                status="in_progress",
+            ),
+            td,
+        )
         r = run_tq_env("ls", env=_make_env(td))
         assert "fmt-005 - [/] Working" in r.stdout
 
@@ -961,7 +1064,9 @@ class TestLsLineFormat:
     def test_multi_deps_appended(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="fmt-009", title="Has deps", deps=["fmt-010", "fmt-011"]), td)
+        write_ticket(
+            Ticket(id="fmt-009", title="Has deps", deps=["fmt-010", "fmt-011"]), td
+        )
         write_ticket(Ticket(id="fmt-010", title="Blocker 1"), td)
         write_ticket(Ticket(id="fmt-011", title="Blocker 2"), td)
         r = run_tq_env("ls", env=_make_env(td))
@@ -975,7 +1080,9 @@ class TestDepsBehavior:
     def test_deps_tree_shows_transitive_deps(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="dep-root", title="Root", deps=["dep-a"], priority=2), td)
+        write_ticket(
+            Ticket(id="dep-root", title="Root", deps=["dep-a"], priority=2), td
+        )
         write_ticket(Ticket(id="dep-a", title="Dep A", deps=["dep-b"], priority=1), td)
         write_ticket(Ticket(id="dep-b", title="Dep B", status="closed", priority=0), td)
         r = run_tq_env("deps", "dep-root", env=_make_env(td))
@@ -1011,17 +1118,23 @@ class TestDepsBehavior:
         count_with = r2.stdout.count("dd-c")
         assert count_with > count_without
 
-    def test_deps_children_sorted_by_subtree_depth_then_id(self, tmp_path: Path) -> None:
+    def test_deps_children_sorted_by_subtree_depth_then_id(
+        self, tmp_path: Path
+    ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="ds-root", title="Root", deps=["ds-shallow", "ds-deep"]), td)
+        write_ticket(
+            Ticket(id="ds-root", title="Root", deps=["ds-shallow", "ds-deep"]), td
+        )
         write_ticket(Ticket(id="ds-shallow", title="Shallow"), td)
         write_ticket(Ticket(id="ds-deep", title="Deep", deps=["ds-deeper"]), td)
         write_ticket(Ticket(id="ds-deeper", title="Deeper"), td)
         r = run_tq_env("deps", "ds-root", env=_make_env(td))
         lines = r.stdout.strip().splitlines()
         # Deep subtree should come first (larger subtree depth)
-        deep_idx = next(i for i, l in enumerate(lines) if "ds-deep" in l and "ds-deeper" not in l)
+        deep_idx = next(
+            i for i, l in enumerate(lines) if "ds-deep" in l and "ds-deeper" not in l
+        )
         shallow_idx = next(i for i, l in enumerate(lines) if "ds-shallow" in l)
         assert deep_idx < shallow_idx
 
@@ -1032,7 +1145,12 @@ class TestDepsBehavior:
         archive_dir = td / "archive"
         archive_dir.mkdir()
         write_ticket(
-            Ticket(id="task-0010", title="Archived root", status="closed", deps=["task-0011"]),
+            Ticket(
+                id="task-0010",
+                title="Archived root",
+                status="closed",
+                deps=["task-0011"],
+            ),
             archive_dir,
         )
         write_ticket(
@@ -1065,7 +1183,9 @@ class TestTagsBehavior:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="tg-open", title="Open", tags=["active"]), td)
-        write_ticket(Ticket(id="tg-closed", title="Closed", status="closed", tags=["dead"]), td)
+        write_ticket(
+            Ticket(id="tg-closed", title="Closed", status="closed", tags=["dead"]), td
+        )
         r = run_tq_env("tags", env=_make_env(td))
         assert "active" in r.stdout
         assert "dead" not in r.stdout
@@ -1165,8 +1285,12 @@ class TestArchiveBehavior:
         """Two closed tickets referencing each other can both be archived."""
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="arc-ma", title="A", status="closed", links=["arc-mb"]), td)
-        write_ticket(Ticket(id="arc-mb", title="B", status="closed", links=["arc-ma"]), td)
+        write_ticket(
+            Ticket(id="arc-ma", title="A", status="closed", links=["arc-mb"]), td
+        )
+        write_ticket(
+            Ticket(id="arc-mb", title="B", status="closed", links=["arc-ma"]), td
+        )
         r = run_tq_env("archive", env=_make_env(td))
         assert r.returncode == 0
         assert (td / "archive" / "arc-ma.md").exists()
@@ -1178,11 +1302,15 @@ class TestArchiveBehavior:
         td.mkdir()
         # B is closed, A is closed and depends on B, open ticket C depends on A
         write_ticket(Ticket(id="arc-cb", title="B", status="closed"), td)
-        write_ticket(Ticket(id="arc-ca", title="A", status="closed", deps=["arc-cb"]), td)
+        write_ticket(
+            Ticket(id="arc-ca", title="A", status="closed", deps=["arc-cb"]), td
+        )
         write_ticket(Ticket(id="arc-cc", title="C", deps=["arc-ca"]), td)
         r = run_tq_env("archive", env=_make_env(td))
         assert (td / "arc-ca.md").exists(), "A should not be archived (C depends on it)"
-        assert (td / "arc-cb.md").exists(), "B should not be archived (A stays and depends on it)"
+        assert (td / "arc-cb.md").exists(), (
+            "B should not be archived (A stays and depends on it)"
+        )
         assert "Skipped" in r.stderr
 
     def test_archive_cascade_blocks_via_link(self, tmp_path: Path) -> None:
@@ -1191,11 +1319,15 @@ class TestArchiveBehavior:
         td.mkdir()
         # B closed; A closed and links B; open C links A.
         write_ticket(Ticket(id="arc-lcb", title="B", status="closed"), td)
-        write_ticket(Ticket(id="arc-lca", title="A", status="closed", links=["arc-lcb"]), td)
+        write_ticket(
+            Ticket(id="arc-lca", title="A", status="closed", links=["arc-lcb"]), td
+        )
         write_ticket(Ticket(id="arc-lcc", title="C", links=["arc-lca"]), td)
         r = run_tq_env("archive", env=_make_env(td))
         assert (td / "arc-lca.md").exists(), "A should not be archived (C links it)"
-        assert (td / "arc-lcb.md").exists(), "B should not be archived (A stays and links it)"
+        assert (td / "arc-lcb.md").exists(), (
+            "B should not be archived (A stays and links it)"
+        )
         assert "Skipped" in r.stderr
 
     def test_archive_no_eligible_prints_message(self, tmp_path: Path) -> None:
@@ -1233,7 +1365,8 @@ class TestLsParent:
 
     # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-renders-as-tree-with-root
     def test_parent_renders_root_unindented_children_indented(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
@@ -1253,7 +1386,9 @@ class TestLsParent:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="epic-xyz-001", title="Epic"), td)
-        write_ticket(Ticket(id="task-aaa-001", title="Child", parent="epic-xyz-001"), td)
+        write_ticket(
+            Ticket(id="task-aaa-001", title="Child", parent="epic-xyz-001"), td
+        )
         r = run_tq_env("ls", "--parent", "xyz", env=_make_env(td))
         assert r.returncode == 0, r.stderr
         assert "epic-xyz-001" in r.stdout
@@ -1287,8 +1422,15 @@ class TestLsParent:
         td.mkdir()
         write_ticket(Ticket(id="epic-001", title="Epic"), td)
         write_ticket(Ticket(id="task-001", title="Ready task", parent="epic-001"), td)
-        write_ticket(Ticket(id="task-002", title="Blocked task", parent="epic-001",
-                            deps=["task-003"]), td)
+        write_ticket(
+            Ticket(
+                id="task-002",
+                title="Blocked task",
+                parent="epic-001",
+                deps=["task-003"],
+            ),
+            td,
+        )
         write_ticket(Ticket(id="task-003", title="Open dep"), td)
         r = run_tq_env("ls", "--parent", "epic-001", "--ready", env=_make_env(td))
         assert r.returncode == 0
@@ -1302,10 +1444,15 @@ class TestLsParent:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="epic-001", title="Epic"), td)
-        write_ticket(Ticket(id="task-001", title="Open", parent="epic-001", status="open"), td)
-        write_ticket(Ticket(id="task-002", title="Done", parent="epic-001", status="closed"), td)
-        r = run_tq_env("ls", "--parent", "epic-001", "--status", "closed",
-                       env=_make_env(td))
+        write_ticket(
+            Ticket(id="task-001", title="Open", parent="epic-001", status="open"), td
+        )
+        write_ticket(
+            Ticket(id="task-002", title="Done", parent="epic-001", status="closed"), td
+        )
+        r = run_tq_env(
+            "ls", "--parent", "epic-001", "--status", "closed", env=_make_env(td)
+        )
         assert "task-002" in r.stdout
         assert "task-001" not in r.stdout
 
@@ -1314,24 +1461,34 @@ class TestLsParent:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="epic-001", title="Epic"), td)
-        write_ticket(Ticket(id="task-001", title="UI", parent="epic-001", tags=["ui"]), td)
-        write_ticket(Ticket(id="task-002", title="Backend", parent="epic-001",
-                            tags=["backend"]), td)
+        write_ticket(
+            Ticket(id="task-001", title="UI", parent="epic-001", tags=["ui"]), td
+        )
+        write_ticket(
+            Ticket(id="task-002", title="Backend", parent="epic-001", tags=["backend"]),
+            td,
+        )
         r = run_tq_env("ls", "--parent", "epic-001", "--tag", "ui", env=_make_env(td))
         assert "task-001" in r.stdout
         assert "task-002" not in r.stdout
 
     # spec: ticket-query requirement=list-filtered-by-parent scenario=parent-root-is-shown-as-context-when-filtered-out
     def test_parent_root_shown_as_context_when_filtered_out(
-        self, tmp_path: Path,
+        self,
+        tmp_path: Path,
     ) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="epic-001", title="Open epic", status="open"), td)
-        write_ticket(Ticket(id="task-001", title="Done task",
-                            parent="epic-001", status="closed"), td)
-        r = run_tq_env("ls", "--parent", "epic-001", "--status", "closed",
-                       env=_make_env(td))
+        write_ticket(
+            Ticket(
+                id="task-001", title="Done task", parent="epic-001", status="closed"
+            ),
+            td,
+        )
+        r = run_tq_env(
+            "ls", "--parent", "epic-001", "--status", "closed", env=_make_env(td)
+        )
         assert r.returncode == 0
         # Both root (as context) and child (as match) appear; root is unindented
         lines = [l for l in r.stdout.splitlines() if l.strip()]
@@ -1429,8 +1586,12 @@ class TestLsDep:
         td.mkdir()
         write_ticket(Ticket(id="parent-001", title="Parent"), td)
         write_ticket(Ticket(id="task-001", title="Target"), td)
-        write_ticket(Ticket(id="task-002", title="Dependent",
-                            parent="parent-001", deps=["task-001"]), td)
+        write_ticket(
+            Ticket(
+                id="task-002", title="Dependent", parent="parent-001", deps=["task-001"]
+            ),
+            td,
+        )
         r = run_tq_env("ls", "--dep", "task-001", env=_make_env(td))
         lines = [l for l in r.stdout.splitlines() if l.strip()]
         assert any(l.startswith("task-002") for l in lines), lines
@@ -1442,10 +1603,14 @@ class TestLsDep:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="task-001", title="Target"), td)
-        write_ticket(Ticket(id="task-002", title="Open dep",
-                            deps=["task-001"], status="open"), td)
-        write_ticket(Ticket(id="task-003", title="Done dep",
-                            deps=["task-001"], status="closed"), td)
+        write_ticket(
+            Ticket(id="task-002", title="Open dep", deps=["task-001"], status="open"),
+            td,
+        )
+        write_ticket(
+            Ticket(id="task-003", title="Done dep", deps=["task-001"], status="closed"),
+            td,
+        )
         r = run_tq_env("ls", "--dep", "task-001", "--status", "open", env=_make_env(td))
         assert "task-002" in r.stdout
         assert "task-003" not in r.stdout
@@ -1455,10 +1620,15 @@ class TestLsDep:
         td = tmp_path / ".tickets"
         td.mkdir()
         write_ticket(Ticket(id="task-001", title="Target"), td)
-        write_ticket(Ticket(id="task-002", title="UI dep",
-                            deps=["task-001"], tags=["ui"]), td)
-        write_ticket(Ticket(id="task-003", title="Backend dep",
-                            deps=["task-001"], tags=["backend"]), td)
+        write_ticket(
+            Ticket(id="task-002", title="UI dep", deps=["task-001"], tags=["ui"]), td
+        )
+        write_ticket(
+            Ticket(
+                id="task-003", title="Backend dep", deps=["task-001"], tags=["backend"]
+            ),
+            td,
+        )
         r = run_tq_env("ls", "--dep", "task-001", "--tag", "ui", env=_make_env(td))
         assert "task-002" in r.stdout
         assert "task-003" not in r.stdout
@@ -1469,8 +1639,9 @@ class TestLsDep:
         td.mkdir()
         write_ticket(Ticket(id="task-001", title="A"), td)
         write_ticket(Ticket(id="task-002", title="B"), td)
-        r = run_tq_env("ls", "--parent", "task-001", "--dep", "task-002",
-                       env=_make_env(td))
+        r = run_tq_env(
+            "ls", "--parent", "task-001", "--dep", "task-002", env=_make_env(td)
+        )
         assert r.returncode != 0
 
 
@@ -1505,15 +1676,23 @@ class TestPruneBehavior:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(
-            Ticket(id="arc-001", title="Archived canceled bug",
-                   status="canceled", type="bug",
-                   created="2025-06-01T10:00:00"),
+            Ticket(
+                id="arc-001",
+                title="Archived canceled bug",
+                status="canceled",
+                type="bug",
+                created="2025-06-01T10:00:00",
+            ),
             td / "archive",
         )
         write_ticket(
-            Ticket(id="arc-002", title="Archived closed task",
-                   status="closed", type="task",
-                   created="2026-03-01T10:00:00"),
+            Ticket(
+                id="arc-002",
+                title="Archived closed task",
+                status="closed",
+                type="task",
+                created="2026-03-01T10:00:00",
+            ),
             td / "archive",
         )
         return td
@@ -1549,17 +1728,20 @@ class TestPruneBehavior:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(
-            Ticket(id="arc-001", title="canceled bug",
-                   status="canceled", type="bug"),
+            Ticket(id="arc-001", title="canceled bug", status="canceled", type="bug"),
             td / "archive",
         )
         write_ticket(
-            Ticket(id="arc-002", title="canceled task",
-                   status="canceled", type="task"),
+            Ticket(id="arc-002", title="canceled task", status="canceled", type="task"),
             td / "archive",
         )
         r = run_tq_env(
-            "prune", "--status", "canceled", "--type", "bug", "-y",
+            "prune",
+            "--status",
+            "canceled",
+            "--type",
+            "bug",
+            "-y",
             env=_make_env(td),
         )
         assert r.returncode == 0
@@ -1578,7 +1760,9 @@ class TestPruneBehavior:
     def test_prune_ignores_active(self, tmp_path: Path) -> None:
         td = tmp_path / ".tickets"
         td.mkdir()
-        write_ticket(Ticket(id="act-001", title="Active canceled", status="canceled"), td)
+        write_ticket(
+            Ticket(id="act-001", title="Active canceled", status="canceled"), td
+        )
         r = run_tq_env("prune", "--status", "canceled", "-y", env=_make_env(td))
         assert r.returncode == 0
         assert (td / "act-001.md").exists()
@@ -1602,13 +1786,11 @@ class TestPruneBehavior:
         td.mkdir()
         (td / "archive").mkdir()
         write_ticket(
-            Ticket(id="arc-001", title="canceled bug",
-                   status="canceled", type="bug"),
+            Ticket(id="arc-001", title="canceled bug", status="canceled", type="bug"),
             td / "archive",
         )
         write_ticket(
-            Ticket(id="arc-002", title="closed task",
-                   status="closed", type="task"),
+            Ticket(id="arc-002", title="closed task", status="closed", type="task"),
             td / "archive",
         )
         r = run_tq_env("prune", "-s", "canceled", "-t", "bug", "-y", env=_make_env(td))
