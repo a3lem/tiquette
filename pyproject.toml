@@ -46,3 +46,14 @@ replace = "## v{new_version} – {now:%Y-%m-%d}"
 filename = ".claude-plugin/plugin.json"
 search = '"version": "{current_version}"'
 replace = '"version": "{new_version}"'
+
+# The lock file records this project's own version. If bump-my-version does not
+# update it in the same commit, the next `uv` command rewrites uv.lock and makes
+# the tree dirty, which blocks the following bump (allow_dirty = false).
+# The pattern is anchored on the package name, because a bare version line
+# matches other packages in the lock file too.
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = 'name = "tiquette"\nversion = "{current_version}"'
+replace = 'name = "tiquette"\nversion = "{new_version}"'
+regex = true
