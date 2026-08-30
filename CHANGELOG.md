@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## v0.3.1 – 2026-08-30
 
 Driven by a usage analysis of 237 real agent invocations (tiqt-aa0e): most command-surface failures were guesses at a note verb. The surface stays canonical -- the answer is teaching, not aliases.
 
