@@ -8,14 +8,20 @@ share one field-flag vocabulary, defined once.
 ## `tq -h`
 
 ```
-tq (tiquette)- a minimal ticket system with dependency tracking
+tq (tiquette) - a minimal ticket system with dependency tracking
 
-Usage: tq <command> [args]
+Usage: tq [--dir PATH] <command> [args]
+
+Global options (before the command)
+-----------------------------------
+  --dir PATH                            Operate on the store at PATH/.tickets.
+                                        Overrides TICKETS_DIR and walk-up. In a
+                                        monorepo, targets one project's tickets.
 
 Frequently Used
 ---------------
   ls --ready                            List open tickets that are not blocked
-  show <id>                             Display ticket (meta + body)
+  show <id>...                          Display ticket (meta + body)
   create <title> [field-options]        Create new ticket (prints ID)
   edit <id> [field-options]             Modify ticket fields
   start <id>...                         Set ticket status to in_progress
@@ -49,14 +55,16 @@ Lifecycle:
                                         Setting and unsetting the same field in
                                         the same call is an error.
 
-  start <id>...                         Set status to in_progress
-  close <id>... [-f]                    Set status to closed (ticket is complete)
+  start <id>... [--note]                Set status to in_progress
+  close <id>... [-f] [--note]           Set status to closed (ticket is complete)
                                         -f/--force cascades through open descendants
                                         Multiple IDs: validated up front, all-or-nothing
-  cancel <id>... [-f]                   Set status to canceled
+  cancel <id>... [-f] [--note]          Set status to canceled
                                         -f/--force cascades through open descendants
                                         Multiple IDs: validated up front, all-or-nothing
-  reopen <id>...                        Set status to open
+  reopen <id>... [--note]               Set status to open
+                                        Optional --note on all status changes to motivate
+                                        status change (repeatable)
   archive                               Move closed and canceled tickets to archive
 
 View:
@@ -76,9 +84,11 @@ View:
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
-  show <id> [--json]                    Display ticket (frontmatter + body)
-  info <id> [--json]                    Frontmatter + computed relationships (no body)
-  path <id>                             Print file path for direct editing
+  show <id>... [--json]                 Display ticket (frontmatter + body)
+  info <id>... [--json]                 Frontmatter + computed relationships (no body)
+                                        --json: one object for a single ID, a
+                                        JSON array for multiple IDs
+  path <id>...                          Print file path for direct editing
   deps <id> [--full]                    Show dependency tree (--full disables dedup)
   links                                 List all linked pairs across tickets
   tags                                  List all tags with counts, sorted by frequency
@@ -86,6 +96,12 @@ View:
 Maintenance:
   validate                              Check all tickets for referential integrity
   autofix                               Update tickets to be consistent with current behavior
+  prune [filters] [-y]                  Permanently delete archived tickets by filter
+    -s, --status X                      Filter: closed|canceled
+    -t, --type TYPE                     Filter by type
+    --before YYYY-MM-DD                 Match tickets created strictly before date
+    -y, --yes                           Actually delete (default: dry run)
+                                        At least one filter required
 
 Examples
 --------
@@ -157,3 +173,29 @@ Examples
   (`apt update`, `brew update`, `git remote update`). tq is file-local, so
   the sync reading would mislead. `edit` matches the in-place-modify prior
   (`gh issue edit`, `crontab -e`, `kubectl edit`).
+- 2026-08 decisions, after a usage analysis of 237 real agent invocations
+  (and one reverted implementation that answered with aliases):
+  - The surface stays canonical. `tq note`, `tq tree`, and a `-m` short flag
+    were considered and rejected: they duplicate `edit --note` and
+    `ls --parent`, and `-m` half-borrows git's `--message` for a field named
+    `note`. The measured failures were guesses made before reading; the
+    remedy is teaching, not surface.
+  - Unknown commands teach the canonical form in the error itself:
+    `tq note ...` → `use: tq edit <id> --note TEXT`; the v1.2-removed verbs
+    map to their `edit` equivalents; other typos get a closest-match
+    suggestion. Hints are error text (exit 2) -- nothing becomes valid, so
+    "gone, not aliased" still holds. This turns the observed three-call
+    recovery into one call. Deliberately not a reference-spec requirement.
+  - `show`/`info`/`path` are variadic like the transitions, validated up
+    front (an unknown ID prints nothing). This removes an inconsistency
+    rather than adding a second way. `deps` stays single-ID: one dependency
+    tree per invocation. `--json` emits one object for a single ID and a
+    JSON array for multiple; `--jsonl` remains an `ls`-only, explicitly
+    named format.
+  - Reads stay fail-fast on malformed ticket files, including unrelated
+    archived ones: the diagnostic names the file, and the `tq autofix` hint
+    is the remedy. Warn-and-skip was considered and rejected.
+  - Instruction layering: the session-priming snippet is policy-only (when
+    to use tq, plus a mandate to load the `tiquette` skill before the first
+    call); the skill is the sole home of surface teaching, including the
+    "there is no `note`/`tree`/`-m`" tips. One reference each, no overlap.

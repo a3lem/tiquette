@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+Driven by a usage analysis of 237 real agent invocations (tiqt-aa0e): most command-surface failures were guesses at a note verb. The surface stays canonical -- the answer is teaching, not aliases.
+
+- changed: `tq show`, `tq info`, and `tq path` accept multiple IDs, validated up front like the transition commands (an unknown or ambiguous ID exits non-zero and prints nothing; repeated IDs display once). `tq deps` stays single-ID.
+- changed: `show`/`info` `--json` with multiple IDs emits one JSON array of ticket objects; a single ID keeps the existing single-object shape. (`--jsonl` remains `ls`-only.)
+- added: unknown subcommands print a hint that teaches the canonical form -- `tq note ...` → `use: tq edit <id> --note TEXT`, `tq tree ...` → `use: tq ls --parent <id>`, the v1.2-removed verbs map to their `edit` equivalents, and other typos get a closest-match suggestion. Hints are error text; every wrong verb still exits 2.
+- changed: the session-priming snippet (`prime.md`) is now policy-only and mandates a `tiquette`-skill load before the first `tq` call; all command-surface teaching moved to the skill, which gains "there is no `note`/`tree`/`-m`" tips and the `ls` mutual-exclusion pairs.
+- improved: `--help` documents `prune -t` (short for `--type`) and the `--json` output shape.
+- removed: the generated skill no longer documents a plugin system (`tq super`, `tq-<cmd>` executables); it was inherited from another project and never implemented here.
+
 ## v0.3.0 – 2026-07-24
 
 - added: global `--dir PATH` option (before the command word) targets the store at `PATH/.tickets`, overriding `TICKETS_DIR` and walk-up. Works for every command; in a monorepo it lets an agent create/read/edit a specific project's tickets without `cd`.

@@ -24,7 +24,7 @@ Global options (before the command)
 Frequently Used
 ---------------
   ls --ready                            List open tickets that are not blocked
-  show <id>                             Display ticket (meta + body)
+  show <id>...                          Display ticket (meta + body)
   create <title> [field-options]        Create new ticket (prints ID)
   edit <id> [field-options]             Modify ticket fields
   start <id>...                         Set ticket status to in_progress
@@ -87,9 +87,11 @@ View:
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
-  show <id> [--json]                    Display ticket (frontmatter + body)
-  info <id> [--json]                    Frontmatter + computed relationships (no body)
-  path <id>                             Print file path for direct editing
+  show <id>... [--json]                 Display ticket (frontmatter + body)
+  info <id>... [--json]                 Frontmatter + computed relationships (no body)
+                                        --json: one object for a single ID, a
+                                        JSON array for multiple IDs
+  path <id>...                          Print file path for direct editing
   deps <id> [--full]                    Show dependency tree (--full disables dedup)
   links                                 List all linked pairs across tickets
   tags                                  List all tags with counts, sorted by frequency
@@ -99,7 +101,7 @@ Maintenance:
   autofix                               Update tickets to be consistent with current behavior
   prune [filters] [-y]                  Permanently delete archived tickets by filter
     -s, --status X                      Filter: closed|canceled
-    --type TYPE                         Filter by type
+    -t, --type TYPE                     Filter by type
     --before YYYY-MM-DD                 Match tickets created strictly before date
     -y, --yes                           Actually delete (default: dry run)
                                         At least one filter required

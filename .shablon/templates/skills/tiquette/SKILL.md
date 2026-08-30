@@ -57,9 +57,21 @@ tq create "Fix parser dropping trailing commas" \
 
 The only time it's safe to skip `-d`: short-lived subtasks created during a single session where the parent ticket or surrounding conversation already carries the context, and you expect to close them the same day.
 
-### Editing fields not covered by a command
+### There is no `note` command (and no `-m`)
 
-To change a ticket's title, edit `.tickets/<id>.md` directly. Use `tq path <id>` to get the file path, then Read and Edit.
+To record progress, append a timestamped note: `tq edit <id> --note "text"` (repeatable). The status verbs (`start`/`close`/`cancel`/`reopen`) also accept `--note`; those entries are auto-tagged with the verb (`[closed]: ...`). `tq note`, `tq comment`, and a `-m` short flag do not exist -- the CLI rejects them and points back to `edit --note`. Never append notes to the ticket file by hand; that bypasses the timestamped format.
+
+### There is no `tree` command
+
+`tq ls --parent <id>` renders a ticket and its descendants as a tree. `tq deps <id>` is the other tree: dependencies, not hierarchy.
+
+### Editing the body beyond -d and notes
+
+`--description` replaces the body; `--note` appends. For body surgery not covered by either (e.g. restructuring sections), use `tq path <id>` to get the file path, then Read and Edit the file directly.
+
+### `ls` filter pairs that don't combine
+
+`ls` enforces three mutually exclusive pairs: `--ready`/`--blocked`, `-a`/`--archived`, and `--parent`/`--dep`. `-r` also excludes `--parent`/`--dep`. Everything else stacks.
 
 ### Ready vs blocked logic
 
@@ -101,19 +113,16 @@ tq ls --jsonl | jq 'select(.priority == 0)'
 tq ls --jsonl | jq 'select(.tags | index("api"))'
 ```
 
-### Plugin system
-
-External executables named `tq-<cmd>` or `tiquette-<cmd>` in PATH are invoked as subcommands. `tq super <cmd>` bypasses plugins.
-
 ## Workflow Patterns
 
 ### Starting work
 
 ```bash
-tq ls --ready                  # what's actionable?
-tq start <id>                  # claim it
+tq ls --ready                                             # what's actionable?
+tq start <id>                                             # claim it
 # ... do the work ...
-tq close <id>                  # done
+tq edit <id> --note "root cause in parser.py; fix behind flag"   # log progress
+tq close <id> --note "fixed in 3f2c1a9"                   # done, with reason
 ```
 
 ### Breaking down an epic

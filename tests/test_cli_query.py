@@ -1811,3 +1811,129 @@ class TestPruneBehavior:
         r = run_tq_env("prune", "--status", "closed", "-y", env=_make_env(td))
         assert r.returncode == 0
         assert not (td / "archive" / "arc-001.md").exists()
+
+
+# ---------------------------------------------------------------------------
+# Variadic show/info/path (variadic-read-commands)
+# ---------------------------------------------------------------------------
+
+
+class TestVariadicShow:
+    """`tq show` accepts multiple IDs, validated up front.
+    # spec: ticket-query requirement=show-ticket
+    """
+
+    # spec: ticket-query requirement=show-ticket scenario=show-multiple-tickets
+    def test_show_multiple(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="show-001", title="One"), td)
+        write_ticket(Ticket(id="show-002", title="Two"), td)
+        r = run_tq_env("show", "show-001", "show-002", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        assert "id: show-001" in r.stdout
+        assert "id: show-002" in r.stdout
+
+    # spec: ticket-query requirement=show-ticket scenario=show-multiple-tickets-with-one-unknown-prints-nothing
+    def test_unknown_among_valid_prints_nothing(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="show-001", title="One"), td)
+        r = run_tq_env("show", "show-001", "nonexistent", env=_make_env(td))
+        assert r.returncode != 0
+        assert r.stdout == ""
+        assert "ticket 'nonexistent' not found" in r.stderr
+
+    # spec: ticket-query requirement=show-ticket scenario=show-multiple-tickets-as-json-emits-an-array
+    def test_multi_json_emits_array(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="show-001", title="One"), td)
+        write_ticket(Ticket(id="show-002", title="Two"), td)
+        r = run_tq_env("show", "show-001", "show-002", "--json", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        data = json.loads(r.stdout)
+        assert isinstance(data, list)
+        assert [t["id"] for t in data] == ["show-001", "show-002"]
+        assert all("body" in t for t in data)
+
+    # spec: ticket-query requirement=show-ticket scenario=show-as-json
+    def test_single_json_stays_object(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="show-001", title="One"), td)
+        r = run_tq_env("show", "show-001", "--json", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        data = json.loads(r.stdout)
+        assert isinstance(data, dict)
+        assert data["id"] == "show-001"
+
+    # spec: ticket-query requirement=show-ticket scenario=show-deduplicates-repeated-ids
+    def test_duplicate_ids_display_once(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="show-001", title="One"), td)
+        r = run_tq_env("show", "show-001", "show-001", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.count("id: show-001") == 1
+
+
+class TestVariadicInfoPath:
+    """`tq info` and `tq path` accept multiple IDs.
+    # spec: ticket-query requirement=info-command
+    # spec: ticket-query requirement=path-command
+    """
+
+    # spec: ticket-query requirement=info-command scenario=info-multiple-tickets
+    def test_info_multiple(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="info-001", title="One"), td)
+        write_ticket(Ticket(id="info-002", title="Two"), td)
+        r = run_tq_env("info", "info-001", "info-002", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        assert "id: info-001" in r.stdout
+        assert "id: info-002" in r.stdout
+
+    # spec: ticket-query requirement=info-command scenario=info-multiple-tickets-as-json-emits-an-array
+    def test_info_multi_json_emits_array(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="info-001", title="One"), td)
+        write_ticket(Ticket(id="info-002", title="Two"), td)
+        r = run_tq_env("info", "info-001", "info-002", "--json", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        data = json.loads(r.stdout)
+        assert isinstance(data, list)
+        assert {t["id"] for t in data} == {"info-001", "info-002"}
+
+    # spec: ticket-query requirement=info-command scenario=info-as-json
+    def test_info_single_json_stays_object(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="info-001", title="One"), td)
+        r = run_tq_env("info", "info-001", "--json", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        assert isinstance(json.loads(r.stdout), dict)
+
+    # spec: ticket-query requirement=path-command scenario=path-prints-multiple-locations
+    def test_path_multiple(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="test-001", title="One"), td)
+        write_ticket(Ticket(id="test-002", title="Two"), td)
+        r = run_tq_env("path", "test-001", "test-002", env=_make_env(td))
+        assert r.returncode == 0, r.stderr
+        lines = r.stdout.splitlines()
+        assert len(lines) == 2
+        assert lines[0].endswith("test-001.md")
+        assert lines[1].endswith("test-002.md")
+
+    # spec: ticket-query requirement=path-command scenario=path-with-one-unknown-id-prints-nothing
+    def test_path_unknown_among_valid_prints_nothing(self, tmp_path: Path) -> None:
+        td = tmp_path / ".tickets"
+        td.mkdir()
+        write_ticket(Ticket(id="test-001", title="One"), td)
+        r = run_tq_env("path", "test-001", "nonexistent", env=_make_env(td))
+        assert r.returncode != 0
+        assert r.stdout == ""

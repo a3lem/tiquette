@@ -41,3 +41,8 @@ replace = '__version__ = "{new_version}"'
 filename = "CHANGELOG.md"
 search = "## [Unreleased]"
 replace = "## v{new_version} – {now:%Y-%m-%d}"
+
+[[tool.bumpversion.files]]
+filename = ".claude-plugin/plugin.json"
+search = '"version": "{current_version}"'
+replace = '"version": "{new_version}"'

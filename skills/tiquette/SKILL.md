@@ -9,7 +9,7 @@ description: >
   mentions "tq", "tiquette", "ticket system", ".tickets", or asks about project task organization.
 metadata:
   author: plugin_src
-  version: 0.2.5
+  version: 0.3.0
   note: Generated. Do not modify
 ---
 
@@ -58,7 +58,7 @@ Global options (before the command)
 Frequently Used
 ---------------
   ls --ready                            List open tickets that are not blocked
-  show <id>                             Display ticket (meta + body)
+  show <id>...                          Display ticket (meta + body)
   create <title> [field-options]        Create new ticket (prints ID)
   edit <id> [field-options]             Modify ticket fields
   start <id>...                         Set ticket status to in_progress
@@ -121,9 +121,11 @@ View:
     --sort FIELD                        Sort: priority|mtime [default: priority]
     --limit N                           Limit results
     --jsonl                             Output as JSON Lines (one object per ticket)
-  show <id> [--json]                    Display ticket (frontmatter + body)
-  info <id> [--json]                    Frontmatter + computed relationships (no body)
-  path <id>                             Print file path for direct editing
+  show <id>... [--json]                 Display ticket (frontmatter + body)
+  info <id>... [--json]                 Frontmatter + computed relationships (no body)
+                                        --json: one object for a single ID, a
+                                        JSON array for multiple IDs
+  path <id>...                          Print file path for direct editing
   deps <id> [--full]                    Show dependency tree (--full disables dedup)
   links                                 List all linked pairs across tickets
   tags                                  List all tags with counts, sorted by frequency
@@ -133,7 +135,7 @@ Maintenance:
   autofix                               Update tickets to be consistent with current behavior
   prune [filters] [-y]                  Permanently delete archived tickets by filter
     -s, --status X                      Filter: closed|canceled
-    --type TYPE                         Filter by type
+    -t, --type TYPE                     Filter by type
     --before YYYY-MM-DD                 Match tickets created strictly before date
     -y, --yes                           Actually delete (default: dry run)
                                         At least one filter required
@@ -159,9 +161,21 @@ tq create "Fix parser dropping trailing commas" \
 
 The only time it's safe to skip `-d`: short-lived subtasks created during a single session where the parent ticket or surrounding conversation already carries the context, and you expect to close them the same day.
 
-### Editing fields not covered by a command
+### There is no `note` command (and no `-m`)
 
-To change a ticket's title, edit `.tickets/<id>.md` directly. Use `tq path <id>` to get the file path, then Read and Edit.
+To record progress, append a timestamped note: `tq edit <id> --note "text"` (repeatable). The status verbs (`start`/`close`/`cancel`/`reopen`) also accept `--note`; those entries are auto-tagged with the verb (`[closed]: ...`). `tq note`, `tq comment`, and a `-m` short flag do not exist -- the CLI rejects them and points back to `edit --note`. Never append notes to the ticket file by hand; that bypasses the timestamped format.
+
+### There is no `tree` command
+
+`tq ls --parent <id>` renders a ticket and its descendants as a tree. `tq deps <id>` is the other tree: dependencies, not hierarchy.
+
+### Editing the body beyond -d and notes
+
+`--description` replaces the body; `--note` appends. For body surgery not covered by either (e.g. restructuring sections), use `tq path <id>` to get the file path, then Read and Edit the file directly.
+
+### `ls` filter pairs that don't combine
+
+`ls` enforces three mutually exclusive pairs: `--ready`/`--blocked`, `-a`/`--archived`, and `--parent`/`--dep`. `-r` also excludes `--parent`/`--dep`. Everything else stacks.
 
 ### Ready vs blocked logic
 
@@ -203,19 +217,16 @@ tq ls --jsonl | jq 'select(.priority == 0)'
 tq ls --jsonl | jq 'select(.tags | index("api"))'
 ```
 
-### Plugin system
-
-External executables named `tq-<cmd>` or `tiquette-<cmd>` in PATH are invoked as subcommands. `tq super <cmd>` bypasses plugins.
-
 ## Workflow Patterns
 
 ### Starting work
 
 ```bash
-tq ls --ready                  # what's actionable?
-tq start <id>                  # claim it
+tq ls --ready                                             # what's actionable?
+tq start <id>                                             # claim it
 # ... do the work ...
-tq close <id>                  # done
+tq edit <id> --note "root cause in parser.py; fix behind flag"   # log progress
+tq close <id> --note "fixed in 3f2c1a9"                   # done, with reason
 ```
 
 ### Breaking down an epic

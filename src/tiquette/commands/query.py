@@ -68,21 +68,27 @@ def _positive_int(value: str) -> int:
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
-    # show <id> [--json]
+    # [AI]
+    # Context: variadic-read-commands -- ticket-query requirements show-ticket/info-command/path-command
+    # Intent: show/info/path accept multiple IDs (nargs="+"), matching the
+    #   variadic transition commands. All IDs are resolved up front so an
+    #   unknown ID prints nothing (see _resolve_many_or_exit).
+
+    # show <id>... [--json]
     p_show = subparsers.add_parser("show", help="Display ticket")
-    p_show.add_argument("id", help="Ticket ID")
+    p_show.add_argument("id", nargs="+", help="Ticket ID(s)")
     p_show.add_argument("--json", action="store_true", help="Output as JSON")
     p_show.set_defaults(func=_handle_show)
 
-    # info <id> [--json]
+    # info <id>... [--json]
     p_info = subparsers.add_parser("info", help="Frontmatter + relationships")
-    p_info.add_argument("id", help="Ticket ID")
+    p_info.add_argument("id", nargs="+", help="Ticket ID(s)")
     p_info.add_argument("--json", action="store_true", help="Output as JSON")
     p_info.set_defaults(func=_handle_info)
 
-    # path <id>
+    # path <id>...
     p_path = subparsers.add_parser("path", help="Print file path")
-    p_path.add_argument("id", help="Ticket ID")
+    p_path.add_argument("id", nargs="+", help="Ticket ID(s)")
     p_path.set_defaults(func=_handle_path)
 
     # deps <id> [--full]
@@ -256,6 +262,24 @@ def _resolve_or_exit(partial: str, tickets_dir: Path) -> str:
 
 
 # [AI]
+# Context: variadic-read-commands -- ticket-query requirements show-ticket/info-command/path-command
+# Intent: resolve every supplied partial ID before the caller prints anything,
+#   so an unknown/ambiguous ID exits with empty stdout (matching the atomic
+#   validation of the variadic transition commands). Dedup on resolved ID,
+#   first-seen order, mirroring _handle_status in lifecycle.py.
+def _resolve_many_or_exit(partials: list[str], tickets_dir: Path) -> list[str]:
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for partial in partials:
+        ticket_id = _resolve_or_exit(partial, tickets_dir)
+        if ticket_id in seen:
+            continue
+        seen.add(ticket_id)
+        resolved.append(ticket_id)
+    return resolved
+
+
+# [AI]
 # Context: cli-redesign-v1.2 -- ticket-query requirement=list-ticket-line-format
 # Intent: glyph keyed on status alone; closed=[x], canceled=[~]. v1.2 renamed
 #   `completed` → `closed`.
@@ -341,27 +365,49 @@ def _build_children_map(tickets: dict[str, Ticket]) -> dict[str | None, list[str
 # ── show ─────────────────────────────────────────────────────
 
 
-# [AI] Show full ticket content: frontmatter, body, and relationship sections
-# (blockers, blocking, children, linked). JSON mode outputs structured data.
+# [AI]
+# Context: variadic-read-commands -- ticket-query requirement=show-ticket
+# Show full ticket content: frontmatter, body, and relationship sections
+#   (blockers, blocking, children, linked).
+# Intent: variadic. All IDs resolve before anything prints. --json keeps the
+#   single-ID object shape and emits a JSON array for multiple IDs (--jsonl
+#   stays an ls-only concept). The bulk load for relationship sections stays
+#   strict: any malformed ticket file fails the command (fail fast; the
+#   TicketParseError diagnostic names the file and main() adds the autofix
+#   hint for legacy statuses).
 def _handle_show(args: argparse.Namespace) -> None:
     tickets_dir = resolve_store(args.dir)
-    ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
-
-    ticket, body = read_ticket_with_body(ticket_id, ticket_dir)
+    ticket_ids = _resolve_many_or_exit(args.id, tickets_dir)
 
     if args.json:
-        print(
-            json.dumps(_ticket_to_dict(ticket, include_body=True, body=body), indent=2)
-        )
+        payloads: list[dict[str, _JsonValue]] = []
+        for ticket_id in ticket_ids:
+            ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+            ticket, body = read_ticket_with_body(ticket_id, ticket_dir)
+            payloads.append(_ticket_to_dict(ticket, include_body=True, body=body))
+        if len(payloads) == 1:
+            print(json.dumps(payloads[0], indent=2))
+        else:
+            print(json.dumps(payloads, indent=2))
         return
+
+    # Load all tickets (active + archived) once for relationship sections.
+    all_tickets = _load_all_tickets(tickets_dir, source="all")
+    for ticket_id in ticket_ids:
+        _print_show(ticket_id, tickets_dir, all_tickets)
+
+
+def _print_show(
+    ticket_id: str,
+    tickets_dir: Path,
+    all_tickets: dict[str, Ticket],
+) -> None:
+    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+    ticket = read_ticket(ticket_id, ticket_dir)
 
     # Read and print raw file content (frontmatter + body)
     file_path = ticket_dir / f"{ticket_id}.md"
     print(file_path.read_text())
-
-    # Load all tickets (active + archived) for relationship sections
-    all_tickets = _load_all_tickets(tickets_dir, source="all")
 
     # Blockers: deps that are not yet in a terminal state
     open_deps = [
@@ -407,42 +453,59 @@ def _handle_show(args: argparse.Namespace) -> None:
 # ── info ─────────────────────────────────────────────────────
 
 
-# [AI] Info shows frontmatter and relationships but no body/description.
+# [AI]
+# Context: variadic-read-commands -- ticket-query requirement=info-command
+# Info shows frontmatter and relationships but no body/description.
+# Intent: variadic like show. All IDs resolve (and all tickets load) before
+#   anything prints. --json: single-ID object shape unchanged, JSON array for
+#   multiple IDs. Text mode separates frontmatter blocks with a blank line.
 def _handle_info(args: argparse.Namespace) -> None:
     tickets_dir = resolve_store(args.dir)
-    ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+    ticket_ids = _resolve_many_or_exit(args.id, tickets_dir)
 
-    ticket = read_ticket(ticket_id, ticket_dir)
+    tickets: list[Ticket] = []
+    for ticket_id in ticket_ids:
+        ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+        tickets.append(read_ticket(ticket_id, ticket_dir))
 
     if args.json:
-        print(json.dumps(_ticket_to_dict(ticket), indent=2))
+        if len(tickets) == 1:
+            print(json.dumps(_ticket_to_dict(tickets[0]), indent=2))
+        else:
+            print(json.dumps([_ticket_to_dict(t) for t in tickets], indent=2))
         return
 
-    # Print frontmatter fields only
-    print(f"id: {ticket.id}")
-    print(f"title: {ticket.title}")
-    print(f"status: {ticket.status}")
-    print(f"type: {ticket.type}")
-    print(f"priority: {ticket.priority}")
-    print(f"assignee: {ticket.assignee}")
-    print(f"deps: {ticket.deps}")
-    print(f"links: {ticket.links}")
-    print(f"parent: {ticket.parent}")
-    print(f"tags: {ticket.tags}")
-    print(f"xref: {ticket.xref}")
-    print(f"created: {ticket.created}")
+    for idx, ticket in enumerate(tickets):
+        if idx > 0:
+            print()
+        # Print frontmatter fields only
+        print(f"id: {ticket.id}")
+        print(f"title: {ticket.title}")
+        print(f"status: {ticket.status}")
+        print(f"type: {ticket.type}")
+        print(f"priority: {ticket.priority}")
+        print(f"assignee: {ticket.assignee}")
+        print(f"deps: {ticket.deps}")
+        print(f"links: {ticket.links}")
+        print(f"parent: {ticket.parent}")
+        print(f"tags: {ticket.tags}")
+        print(f"xref: {ticket.xref}")
+        print(f"created: {ticket.created}")
 
 
 # ── path ─────────────────────────────────────────────────────
 
 
+# [AI]
+# Context: variadic-read-commands -- ticket-query requirement=path-command
+# Intent: variadic; one path per line in argument order. All IDs resolve
+#   before anything prints.
 def _handle_path(args: argparse.Namespace) -> None:
     tickets_dir = resolve_store(args.dir)
-    ticket_id = _resolve_or_exit(args.id, tickets_dir)
-    ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
-    file_path = ticket_dir / f"{ticket_id}.md"
-    print(file_path)
+    ticket_ids = _resolve_many_or_exit(args.id, tickets_dir)
+    for ticket_id in ticket_ids:
+        ticket_dir = ticket_home_dir(ticket_id, tickets_dir)
+        print(ticket_dir / f"{ticket_id}.md")
 
 
 # ── deps ─────────────────────────────────────────────────────

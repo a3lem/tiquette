@@ -451,3 +451,68 @@ class TestRemovedCommandsAreGone:
     def test_xref_command_rejected(self) -> None:
         result = run_tq("xref", "t-001", "gh-1")
         assert result.returncode != 0
+
+
+class TestHelpVariadicAndPrune:
+    """variadic-read-commands: help shows variadic reads and prune -t."""
+
+    def test_show_variadic_in_help(self) -> None:
+        result = run_tq("--help")
+        assert "show <id>..." in result.stdout
+
+    def test_path_variadic_in_help(self) -> None:
+        result = run_tq("--help")
+        assert "path <id>..." in result.stdout
+
+    def test_json_shape_documented(self) -> None:
+        result = run_tq("--help")
+        assert "JSON array for multiple IDs" in result.stdout
+
+    def test_prune_type_short_in_help(self) -> None:
+        result = run_tq("--help")
+        assert "-t, --type TYPE" in result.stdout
+
+
+class TestUnknownCommandHints:
+    """variadic-read-commands: unknown commands teach the canonical form.
+
+    Hints are error text only -- every wrong verb still exits non-zero, so
+    the v1.2 'gone, not aliased' rejection tests above remain valid.
+    """
+
+    def test_note_teaches_edit_note(self) -> None:
+        result = run_tq("note", "t-001", "some text")
+        assert result.returncode != 0
+        assert "use: tq edit <id> --note TEXT" in result.stderr
+
+    def test_comment_teaches_edit_note(self) -> None:
+        result = run_tq("comment", "t-001", "some text")
+        assert result.returncode != 0
+        assert "use: tq edit <id> --note TEXT" in result.stderr
+
+    def test_tree_teaches_ls_parent(self) -> None:
+        result = run_tq("tree", "t-001")
+        assert result.returncode != 0
+        assert "use: tq ls --parent <id>" in result.stderr
+
+    def test_removed_verb_teaches_edit_equivalent(self) -> None:
+        result = run_tq("nest", "t-001", "p-001")
+        assert result.returncode != 0
+        assert "use: tq edit <child> --parent <parent-id>" in result.stderr
+
+    def test_typo_gets_closest_match(self) -> None:
+        result = run_tq("closs", "t-001")
+        assert result.returncode != 0
+        assert "did you mean 'close'?" in result.stderr
+
+    def test_gibberish_gets_stock_error(self) -> None:
+        result = run_tq("zzqqxx")
+        assert result.returncode != 0
+        assert "use:" not in result.stderr
+        assert "did you mean" not in result.stderr
+
+    def test_option_invalid_choice_untouched(self) -> None:
+        result = run_tq("create", "X", "-t", "bad")
+        assert result.returncode != 0
+        assert "did you mean" not in result.stderr
+        assert "invalid choice" in result.stderr
