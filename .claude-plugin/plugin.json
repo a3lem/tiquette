@@ -1,6 +1,6 @@
 {
   "name": "tiquette",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Minimal file-based ticket system with dependency tracking for humans and AI agents",
   "author": {
     "name": "a3lem",
